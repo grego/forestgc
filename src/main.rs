@@ -411,156 +411,97 @@ impl Graph {
         self.adj[v]
     }
 
-    /// Refine partition of vertices given as vector of bitmasks
+    /// Refines a partition of vertices (given as bitmask vector) using adjacency information.
+    /// Uses integer hashes instead of Vec<u8> signatures for speed.
     fn refine(&self, classes: &mut Vec<u64>) {
+        let n = self.num_vertices as usize;
+        let mut sigs = Vec::with_capacity(n);
+        // let mut new_parts = Vec::with_capacity(n);
         loop {
-            let n_classes = classes.len();
             let mut changed = false;
-            let mut new_classes = Vec::with_capacity(n_classes);
 
-            for &mask in classes.iter() {
-                // Collect signatures for all vertices in this class
-                let mut sig_verts: Vec<(Vec<u8>, u8)> = Vec::new();
+            // For each class, split by neighborhood signatures
+            for i in 0..classes.len() {
+                let class_mask = classes[i];
+                if class_mask.count_ones() <= 1 {
+                    continue;
+                }
 
-                // For each vertex in mask
-                let mut mm = mask;
+                // Compute integer signature for each vertex in this class
+                // let mut sigs: Vec<(usize, u8)> = Vec::new();
+                sigs.clear();
+                let mut mm = class_mask;
                 while mm != 0 {
                     let v = mm.trailing_zeros() as usize;
                     mm &= mm - 1;
 
-                    // Build signature: number of neighbors in each class
-                    let mut sig = Vec::with_capacity(n_classes);
-                    for &cm in classes.iter() {
-                        sig.push((self.adj_bits(v) & cm).count_ones() as u8);
+                    // Compute hash signature based on neighbor counts in each class
+                    let mut h: usize = 0;
+                    for (j, &cm) in classes.iter().enumerate() {
+                        let cnt = (self.adj_bits(v) & cm).count_ones() as usize;
+                        // Simple multiplicative hash; 257 is small prime
+                        h = h.wrapping_mul(257).wrapping_add(cnt + j * 17);
                     }
-                    sig_verts.push((sig, v as u8));
+
+                    sigs.push((h, v as u8));
                 }
 
-                // Sort and group
-                sig_verts.sort_by(|(sa, a), (sb, b)| {
-                    let c = sa.cmp(sb);
-                    if c != std::cmp::Ordering::Equal { c } else { a.cmp(b) }
-                });
+                // Sort vertices by signature and split if necessary
+                sigs.sort_unstable_by_key(|x| x.0);
 
-                // Build new subclasses
-                let mut i = 0;
-                while i < sig_verts.len() {
-                    let mut submask: u64 = 0;
-                    let (ref sig0, v0) = sig_verts[i];
-                    submask |= 1u64 << (v0 as usize);
-                    i += 1;
-                    while i < sig_verts.len() && sig_verts[i].0 == *sig0 {
-                        submask |= 1u64 << (sig_verts[i].1 as usize);
-                        i += 1;
+                // Build new partition pieces
+                let mut new_parts: Vec<u64> = Vec::with_capacity(n);
+                // new_parts.clear();
+                let mut cur_mask = 0u64;
+                let mut cur_sig = sigs[0].0;
+
+                for &(sig, v) in &sigs {
+                    if sig != cur_sig {
+                        new_parts.push(cur_mask);
+                        cur_mask = 0;
+                        cur_sig = sig;
                     }
-                    new_classes.push(submask);
+                    cur_mask |= 1u64 << v;
                 }
+                new_parts.push(cur_mask);
 
-                if new_classes.len() > classes.len() {
+                if new_parts.len() > 1 {
+                    // Replace class i by the new parts
+                    classes.remove(i);
+                    for (k, part) in new_parts.into_iter().enumerate() {
+                        classes.insert(i + k, part);
+                    }
                     changed = true;
+                    break; // restart refinement because indices changed
                 }
             }
 
-            *classes = new_classes;
             if !changed {
                 break;
             }
         }
     }
 
+    #[inline(always)]
+    fn bitstring(&self) -> u128 {
+        let n = self.num_vertices as usize;
+        let mut bits = 0u128;
+        let mut k = 0;
+        for j in 1..n {
+            for i in 0..j {
+                if (self.adj[i] >> j) & 1 != 0 {
+                    bits |= 1u128 << k;
+                }
+                k += 1;
+            }
+        }
+        bits
+    }
+
+
+
 }
 
-
-
-// fn search_bm(
-//     g: &Graph,
-//     classes: &Vec<u64>,
-//     best: &mut Option<(Graph, Vec<u8>)>,
-// ) {
-//     // let mut mybest = if let Some((best_graph, pp)) = best {
-//     //     Some((best_graph.clone(), vec![pp.clone()]))
-//     // } else {
-//     //     None
-//     // };
-//     // let xx = search_multi(g, classes, &mut mybest);
-//     // if let Some((best_graph, pp)) = mybest {
-//     //     *best = Some((best_graph, pp[0].clone()));
-//     // }
-//     // return;
-//     let mut perm = vec![0; g.num_vertices as usize];
-
-//     // let mut tclasses = vec![vec![]; g.num_vertices as usize];
-//     // for i in 0..(g.num_vertices as usize) {
-//     //     tclasses[i].push(i as u8);
-//     // }
-//     // let classes = &tclasses;
-
-
-//     if classes.iter().all(|cls| cls.count_ones() == 1) {
-//         // we found a leaf
-//         let mut idx = 0;
-//         for cls in classes {
-//             let v_idx = cls.trailing_zeros() as u8;
-//             perm[v_idx as usize] = idx as u8;
-//             idx += 1;
-//         }
-//         let g_perm = g.permute(&perm);
-//         if let Some((best_graph, _)) = best {
-//             if g_perm.edges < best_graph.edges {
-//                 *best = Some((g_perm, perm.clone()));
-//             }
-//         } else {
-//             *best = Some((g_perm, perm.clone()));
-//         }
-//         return;
-//     }
-
-//     let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
-//     let class = &classes[class_pos];
-
-//     for v in 0..g.num_vertices {
-//         if (class & (1u64 << v)) == 0 {
-//             continue;
-//         }
-//         let v = v as u8;
-//         // print!(".");
-//         let mut new_classes = Vec::new();
-//         for (i, cls) in classes.iter().enumerate() {
-//             if i == class_pos {
-//                 let others = cls & !(1u64 << v);
-//                 if others != 0 {
-//                     new_classes.push(others);
-//                 }
-//                 new_classes.push(1u64 << v);
-//             } else {
-//                 new_classes.push(*cls);
-//             }
-//         }
-
-//         let mut refined = new_classes.clone();
-//         g.refine(&mut refined);
-//         search_bm(g, &refined, best);
-//     } 
-//     // {
-//     //     // print!(".");
-//     //     let mut new_classes = Vec::new();
-//     //     for (i, cls) in classes.iter().enumerate() {
-//     //         if i == class_pos {
-//     //             let mut others: Vec<u8> = cls.iter().cloned().filter(|&x| x != v).collect();
-//     //             if !others.is_empty() {
-//     //                 new_classes.push(others);
-//     //             }
-//     //             new_classes.push(vec![v]);
-//     //         } else {
-//     //             new_classes.push(cls.clone());
-//     //         }
-//     //     }
-
-//     //     let mut refined = new_classes.clone();
-//     //     refine(g, &mut refined);
-//     //     search(g, &refined, best);
-//     // }
-// }
 
 fn search_multi_bm(
     g: &Graph,
@@ -580,9 +521,13 @@ fn search_multi_bm(
         }
         let g_perm = g.permute(&perm);
         if let Some((best_graph, _)) = best {
+            // let best_bitstr = best_graph.bitstring();
+            // let g_bitstr = g_perm.bitstring();
             if g_perm.edges < best_graph.edges {
+            // if g_bitstr < best_bitstr {
                 *best = Some((g_perm, vec![perm.clone()]));
             } else if g_perm.edges == best_graph.edges {
+            // } else if best_bitstr == g_bitstr {
                 if let Some((_, perms)) = best.as_mut() {
                     perms.push(perm.clone());
                 }
