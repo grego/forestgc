@@ -1,8 +1,13 @@
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use std::hash::Hash;
 use std::time::Instant;
 use std::io::BufRead;
 use rustc_hash::FxHashSet;
+use std::collections::HashMap;
+use std::collections::BTreeMap;
+
+type HashType = usize;
 
 #[derive(Clone, Debug)]
 pub struct Graph {
@@ -263,43 +268,68 @@ impl Graph {
         result
     }
 
-    pub fn canonical_label_bm(&self, init_colors: Option<&[usize]>) -> (Graph, Vec<u8>) {
-        let (g, pp) = self.canonical_labels_bm(init_colors);
+
+    #[inline(always)]
+    pub fn canonical_label(&self) -> (Graph, Vec<u8>) {
+        let (g, pp) = self.canonical_labels();
         return (g, pp[0].clone());
     }
 
-    pub fn canonical_labels_bm(&self, init_colors: Option<&[usize]>) -> (Graph, Vec<Vec<u8>>) {
-        let n = self.num_vertices as usize;
-        let mut classes: Vec<u64> = Vec::new();
+    #[inline(always)]
+    pub fn canonical_label_col(&self, init_colors: &[usize]) -> (Graph, Vec<u8>) {
+        let (g, pp) = self.canonical_labels_col(init_colors);
+        return (g, pp[0].clone());
+    }
 
-        if let Some(colors) = init_colors {
-            assert_eq!(colors.len(), n);
-            use std::collections::HashMap;
-            let mut map: HashMap<usize, u64> = HashMap::new();
-            for (v, &col) in colors.iter().enumerate() {
-                *map.entry(col).or_default() |= 1u64 << v;
-            }
-            let mut keys: Vec<usize> = map.keys().cloned().collect();
-            keys.sort();
-            for key in keys {
-                classes.push(map.remove(&key).unwrap());
-            }
-        } else {
-            let deg = self.distance_histogram_keys();
-            // call this function with the degree partition
-            return self.canonical_labels_bm(Some(&deg));
-        }
+    #[inline(always)]
+    pub fn canonical_labels(&self) -> (Graph, Vec<Vec<u8>>) {
+        let zero_colors = vec![0usize; self.num_vertices as usize];
+        self.canonical_labels_col(&zero_colors)
+    }
+
+    pub fn canonical_labels_col(&self, init_colors: &[usize]) -> (Graph, Vec<Vec<u8>>) {
+        let n = self.num_vertices as usize;
+        // let mut classes: Vec<u64> = vec![]; //vec![(1<<n)-1]; // start with one big class
+        let mut classes: Vec<u64> = vec![(1<<n)-1]; // start with one big class
+        let start = Instant::now();
+        // if let Some(colors) = init_colors {
+        assert_eq!(init_colors.len(), n);
+        // get some initial coloring by applying relatively strong vertex invariants
+        classes = self.refined_coloring(&classes, init_colors);
+ 
+        let hash = self.distance_histogram_keys();
+        classes = self.refined_coloring(&classes, &hash);
 
         self.refine(&mut classes);
+        // let hash = self.myhash(&classes);
+        // classes = self.refined_coloring(&classes, &hash);
+        let elapsed = start.elapsed();
+        // println!("initial coloring took {:.6} ms", elapsed.as_secs_f64() * 1e3);
+
+        let start = Instant::now();
 
         let mut best: Option<(Graph, Vec<Vec<u8>>)> = None;
         search_multi_bm(self, &classes, &mut best);
+        let elapsed2 = start.elapsed();
+        // println!("search_multi_bm took {:.6} ms", elapsed2.as_secs_f64() * 1e3);
+
+        // display timing only if one took more than .01ms
+        if elapsed.as_secs_f64() * 1e3 > 0.01 || elapsed2.as_secs_f64() * 1e3 > 0.01 {
+            // let n_autos = self.automorphisms().len();
+            println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
+        }
+
         best.unwrap()
     }
 
 
-    pub fn automorphisms(&self, init_colors: Option<&[usize]>) -> Vec<Vec<u8>> {
-        let (_canon, best_perms) = self.canonical_labels_bm(init_colors);
+    #[inline(always)]
+    pub fn automorphisms(&self) -> Vec<Vec<u8>> {
+        let zero_colors = vec![0usize; self.num_vertices as usize];
+        return self.automorphisms_col(&zero_colors);
+    }
+    pub fn automorphisms_col(&self, init_colors: &[usize]) -> Vec<Vec<u8>> {
+        let (_canon, best_perms) = self.canonical_labels_col(init_colors);
         if best_perms.is_empty() {
             return vec![];
         }
@@ -393,23 +423,91 @@ impl Graph {
     //     initial_classes
     // }
 
-
-    pub fn load_from_file_nohdr(filename: &str) -> std::io::Result<Vec<String>> {
-        let file = std::fs::File::open(filename)?;
-        let reader = std::io::BufReader::new(file);
-        // read first line and trsnform to int
-        let lines = reader.lines();
-        let mut g6_list = Vec::new();
-        for line in lines {
-            let g6 = line?;
-            g6_list.push(g6);
-        }
-        Ok(g6_list)
-    }
+    /// Refines a given original coloring based on given hash values provided for every vertex.
+    /// Each of the original classes is (possibly) split into multiple classes of vertices of equal hash values.
+    /// The new subclasses are sorted by hash value.
     #[inline(always)]
-    fn adj_bits(&self, v: usize) -> u64 {
-        self.adj[v]
+    fn refined_coloring(&self, orig_classes: &[u64], hashes: &[HashType]) -> Vec<u64> {
+        let n = self.num_vertices as usize;
+        let mut new_classes = Vec::with_capacity(n);
+        for &class_mask in orig_classes {
+            if class_mask.count_ones() <= 1 {
+                new_classes.push(class_mask);
+                continue;
+            }
+            // Map from hash value to bitmask of vertices in this class with that hash
+            let mut hash_map: BTreeMap<HashType, u64> = BTreeMap::new();
+            let mut mm = class_mask;
+            while mm != 0 {
+                let v = mm.trailing_zeros() as usize;
+                mm &= mm - 1;
+                let h = hashes[v];
+                *hash_map.entry(h).or_default() |= 1u64 << v;
+            }
+            for (_h, mask) in hash_map {
+                new_classes.push(mask);
+            }
+        }
+        new_classes
     }
+
+    #[inline(always)]
+    fn adjacency_hash(&self, classes: &[u64]) -> Vec<u64> {
+        let n = self.num_vertices as usize;
+        let mut hashes = vec![0u64; n];
+        for v in 0..n {
+            let mut h: u64 = 0;
+            for (i, &cm) in classes.iter().enumerate() {
+                let cnt = (self.adj[v] & cm).count_ones() as u64;
+                // Simple multiplicative hash; 257 is small prime
+                h = h.wrapping_mul(257).wrapping_add(cnt + (i as u64) * 17);
+            }
+            hashes[v] = h;
+        }
+        hashes
+    }
+
+    /// Compute a structural hash per vertex based on the current partition.
+    /// Each color class is represented by a bitmask in `part`.
+    /// Assumes self.adj[v] is a u64 bitmask of neighbors of v.
+    #[inline(always)]
+    pub fn myhash(&self, part: &[u64]) -> Vec<HashType> {
+        let adj = &self.adj;
+        let n = self.num_vertices as usize;
+        let mut hashes:Vec<HashType> = vec![0; n];
+
+        // For each vertex, accumulate neighbor counts per color class
+        for v in 0..n {
+            let mut h: HashType = 0xcbf29ce484222325; // FNV offset basis
+            let a = adj[v];
+
+            for &mask in part {
+                // number of neighbors of v in this color class
+                let c = (a & mask).count_ones() as HashType;
+
+                // mix into hash (FNV-1a style)
+                h ^= c.wrapping_add(0x9e3779b97f4a7c15);
+                h = h.wrapping_mul(0x100000001b3);
+            }
+
+            // also include degree (for extra discrimination)
+            h ^= a.count_ones() as HashType;
+            h = h.wrapping_mul(0x9e3779b97f4a7c15);
+
+            hashes[v] = h;
+        }
+
+        hashes
+    }
+
+    // #[inline(always)]
+    // fn myhash2(&self, part: &[u64]) -> Vec<HashType> {
+    //     // combine distance histogram and myhash 2
+    //     let n = self.num_vertices as usize;
+    //     let mut hashes = vec![0usize; n];
+    //     let dist_histograms: Vec<Vec<usize>> = (0..self.num_vertices).map(|v| self.distance_histogram(v)).collect();
+
+    // }
 
     /// Refines a partition of vertices (given as bitmask vector) using adjacency information.
     /// Uses integer hashes instead of Vec<u8> signatures for speed.
@@ -417,6 +515,22 @@ impl Graph {
         let n = self.num_vertices as usize;
         let mut sigs = Vec::with_capacity(n);
         // let mut new_parts = Vec::with_capacity(n);
+
+        // loop {
+
+        //     // let start = Instant::now();
+        //     let hashes = self.adjacency_hash(classes);
+        //     // let duration1 = start.elapsed();
+        //     // let start = Instant::now();
+        //     let new_classes = self.refined_coloring(classes, &hashes);
+        //     // let duration2 = start.elapsed();
+        //     // println!("Times {:.6} ms, {:.6} ms", duration1.as_secs_f64() * 1e3, duration2.as_secs_f64() * 1e3);
+        //     if new_classes.len() == classes.len() {
+        //         break;
+        //     }
+        //     *classes = new_classes;
+        // }
+
         loop {
             let mut changed = false;
 
@@ -438,7 +552,7 @@ impl Graph {
                     // Compute hash signature based on neighbor counts in each class
                     let mut h: usize = 0;
                     for (j, &cm) in classes.iter().enumerate() {
-                        let cnt = (self.adj_bits(v) & cm).count_ones() as usize;
+                        let cnt = (self.adj[v] & cm).count_ones() as usize;
                         // Simple multiplicative hash; 257 is small prime
                         h = h.wrapping_mul(257).wrapping_add(cnt + j * 17);
                     }
@@ -592,19 +706,22 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
         // println!("Graph A: {} ", g.to_g6());
         let perm = random_permutation(&mut rng, n);
         let g2 = g.permute(&perm);
-        let autos = g.automorphisms(None);
+        let autos = g.automorphisms();
         if autos.len() > 1 {
             // print!("{}", autos.len());
             with_autos += 1;
+            if autos.len() > 2 {
+                println!("{} automorphisms", autos.len());
+            }
         }
         // let g2 = Graph::from_g6("GSWOO?");
         // println!("Graph B: {} ", g2.to_g6());
 
         // let start = Instant::now();
-        let (can1, _) = g.canonical_label_bm(None);
+        let (can1, _) = g.canonical_label();
         // let (can1, _) = g.canonical_label(g.initial_degree_classes());
         // println!("Canonical A: {} ", can1.to_g6());
-        let (can2, _) = g2.canonical_label_bm(None);
+        let (can2, _) = g2.canonical_label();
         // let (can2, _) = g2.canonical_label(g2.initial_degree_classes());
         // let duration = start.elapsed();
         // println!("Duration: {:?} ms", duration.as_secs_f64() * 1e3);
