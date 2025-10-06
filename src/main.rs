@@ -467,6 +467,13 @@ impl Graph {
 
     #[inline(always)]
     fn graph_score(&self, perm: &[u8]) -> GraphScore {
+        // let mut idx = 0;
+        // for cls in classes {
+        //     let v_idx = cls.trailing_zeros() as u8;
+        //     perm[v_idx as usize] = idx as u8;
+        //     idx += 1;
+        // }
+
         let n = self.num_vertices as usize;
         let mut adj = vec![0u64; n];
         for &(u, v) in &self.edges {
@@ -478,13 +485,41 @@ impl Graph {
         adj
     }
 
+    #[inline(always)]
+    fn graph_score_cls(&self, classes: &[u64]) -> GraphScore {
+        // compute the adjacency matrix of the quotient graph, where each class is a super-vertex
+        // and we have an edge between two super-vertices if there is any edge between any of their members
+        let n = classes.len();
+        let mut adj = vec![0u64; n];
+        for i in 0..n {
+            let ci = classes[i];
+            for j in (i+1)..n {
+                let cj = classes[j];
+                // check if there is any edge between ci and cj
+                let mut found = false;
+                let mut mm = ci;
+                while mm != 0 && !found {
+                    let v = mm.trailing_zeros() as usize;
+                    mm &= mm - 1;
+                    if (self.adj[v] & cj) != 0 {
+                        found = true;
+                    }
+                }
+                if found {
+                    adj[i] |= 1u64 << j;
+                    adj[j] |= 1u64 << i;
+                }
+            }
+        }
+        adj
+    }
+
     fn search_multi_bm(
         &self,
         classes: &Vec<u64>,
         best: &mut Option<(GraphScore, Vec<Vec<u8>>)>,
     ) {
         let mut perm = vec![0; self.num_vertices as usize];
-
 
 
         if classes.iter().all(|cls| cls.count_ones() == 1) {
@@ -499,7 +534,7 @@ impl Graph {
             if let Some((best_graph_score, _)) = best {
                 //let best_bitstr = best_graph.bitstring();
                 // let g_bitstr = g_perm.bitstring();
-                if gperm_score < *best_graph_score {
+                if gperm_score > *best_graph_score {
                     *best = Some((gperm_score, vec![perm.clone()]));
                 } else if gperm_score == *best_graph_score {
                 // } else if best_bitstr == g_bitstr {
@@ -532,6 +567,14 @@ impl Graph {
                     new_classes.push(1u64 << v);
                 } else {
                     new_classes.push(*cls);
+                }
+            }
+
+            // prune this branch if the quotient graph is already worse than the best found so far
+            if let Some((best_graph_score, _)) = best {
+                let gcls_score = self.graph_score_cls(&new_classes);
+                if gcls_score < *best_graph_score {
+                    continue;
                 }
             }
 
