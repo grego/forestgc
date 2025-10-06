@@ -450,30 +450,7 @@ impl Graph {
     }
 
     #[inline(always)]
-    fn bitstring(&self) -> u128 {
-        let n = self.num_vertices as usize;
-        let mut bits = 0u128;
-        let mut k = 0;
-        for j in 1..n {
-            for i in 0..j {
-                if (self.adj[i] >> j) & 1 != 0 {
-                    bits |= 1u128 << k;
-                }
-                k += 1;
-            }
-        }
-        bits
-    }
-
-    #[inline(always)]
     fn graph_score(&self, perm: &[u8]) -> GraphScore {
-        // let mut idx = 0;
-        // for cls in classes {
-        //     let v_idx = cls.trailing_zeros() as u8;
-        //     perm[v_idx as usize] = idx as u8;
-        //     idx += 1;
-        // }
-
         let n = self.num_vertices as usize;
         let mut adj = vec![0u64; n];
         for &(u, v) in &self.edges {
@@ -485,34 +462,34 @@ impl Graph {
         adj
     }
 
-    #[inline(always)]
-    fn graph_score_cls(&self, classes: &[u64]) -> GraphScore {
-        // compute the adjacency matrix of the quotient graph, where each class is a super-vertex
-        // and we have an edge between two super-vertices if there is any edge between any of their members
-        let n = classes.len();
-        let mut adj = vec![0u64; n];
-        for i in 0..n {
-            let ci = classes[i];
-            for j in (i+1)..n {
-                let cj = classes[j];
-                // check if there is any edge between ci and cj
-                let mut found = false;
-                let mut mm = ci;
-                while mm != 0 && !found {
-                    let v = mm.trailing_zeros() as usize;
-                    mm &= mm - 1;
-                    if (self.adj[v] & cj) != 0 {
-                        found = true;
-                    }
-                }
-                if found {
-                    adj[i] |= 1u64 << j;
-                    adj[j] |= 1u64 << i;
-                }
-            }
-        }
-        adj
-    }
+    // #[inline(always)]
+    // fn graph_score_cls(&self, classes: &[u64]) -> GraphScore {
+    //     // compute the adjacency matrix of the quotient graph, where each class is a super-vertex
+    //     // and we have an edge between two super-vertices if there is any edge between any of their members
+    //     let n = classes.len();
+    //     let mut adj = vec![0u64; n];
+    //     for i in 0..n {
+    //         let ci = classes[i];
+    //         for j in (i+1)..n {
+    //             let cj = classes[j];
+    //             // check if there is any edge between ci and cj
+    //             let mut found = false;
+    //             let mut mm = ci;
+    //             while mm != 0 && !found {
+    //                 let v = mm.trailing_zeros() as usize;
+    //                 mm &= mm - 1;
+    //                 if (self.adj[v] & cj) != 0 {
+    //                     found = true;
+    //                 }
+    //             }
+    //             if found {
+    //                 adj[i] |= 1u64 << j;
+    //                 adj[j] |= 1u64 << i;
+    //             }
+    //         }
+    //     }
+    //     adj
+    // }
 
     fn search_multi_bm(
         &self,
@@ -534,7 +511,7 @@ impl Graph {
             if let Some((best_graph_score, _)) = best {
                 //let best_bitstr = best_graph.bitstring();
                 // let g_bitstr = g_perm.bitstring();
-                if gperm_score > *best_graph_score {
+                if gperm_score < *best_graph_score {
                     *best = Some((gperm_score, vec![perm.clone()]));
                 } else if gperm_score == *best_graph_score {
                 // } else if best_bitstr == g_bitstr {
@@ -571,82 +548,21 @@ impl Graph {
             }
 
             // prune this branch if the quotient graph is already worse than the best found so far
-            if let Some((best_graph_score, _)) = best {
-                let gcls_score = self.graph_score_cls(&new_classes);
-                if gcls_score < *best_graph_score {
-                    continue;
-                }
-            }
+            // Experimentally, pruning here does not help much, so it is commented out
+            // if let Some((best_graph_score, _)) = best {
+            //     let gcls_score = self.graph_score_cls(&new_classes);
+            //     if gcls_score > *best_graph_score {
+            //         print!("x");
+            //         continue;
+            //     }
+            // }
 
             let mut refined = new_classes.clone();
             self.refine(&mut refined);
+
             self.search_multi_bm(&refined, best);
         }
     }
-
-
-
-    // fn search_multi_bm_old(
-    //     &self,
-    //     classes: &Vec<u64>,
-    //     best: &mut Option<(Graph, Vec<Vec<u8>>)>,
-    // ) {
-    //     let mut perm = vec![0; self.num_vertices as usize];
-
-    //     if classes.iter().all(|cls| cls.count_ones() == 1) {
-    //         // we found a leaf
-    //         let mut idx = 0;
-    //         for cls in classes {
-    //             let v_idx = cls.trailing_zeros() as u8;
-    //             perm[v_idx as usize] = idx as u8;
-    //             idx += 1;
-    //         }
-    //         let g_perm = self.permute(&perm);
-    //         if let Some((best_graph, _)) = best {
-    //             // let best_bitstr = best_graph.bitstring();
-    //             // let g_bitstr = g_perm.bitstring();
-    //             if g_perm.edges < best_graph.edges {
-    //             // if g_bitstr < best_bitstr {
-    //                 *best = Some((g_perm, vec![perm.clone()]));
-    //             } else if g_perm.edges == best_graph.edges {
-    //             // } else if best_bitstr == g_bitstr {
-    //                 if let Some((_, perms)) = best.as_mut() {
-    //                     perms.push(perm.clone());
-    //                 }
-    //             }
-    //         } else {
-    //             *best = Some((g_perm, vec![perm.clone()]));
-    //         }
-    //         return;
-    //     }
-
-    //     let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
-    //     let class = &classes[class_pos];
-
-    //     for v in 0..self.num_vertices {
-    //         if (class & (1u64 << v)) == 0 {
-    //             continue;
-    //         }
-    //         let v = v as u8;
-    //         // print!(".");
-    //         let mut new_classes = Vec::new();
-    //         for (i, cls) in classes.iter().enumerate() {
-    //             if i == class_pos {
-    //                 let others = cls & !(1u64 << v);
-    //                 if others != 0 {
-    //                     new_classes.push(others);
-    //                 }
-    //                 new_classes.push(1u64 << v);
-    //             } else {
-    //                 new_classes.push(*cls);
-    //             }
-    //         }
-
-    //         let mut refined = new_classes.clone();
-    //         self.refine(&mut refined);
-    //         self.search_multi_bm_old(&refined, best);
-    //     }
-    // }
 
 }
 
@@ -718,8 +634,8 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
 
 fn main() {
     // test_canonical_label_random(20);
-    test_canonical_label_file("data/graphs10_0.g6",1000);
-    test_canonical_label_file("data/graphs10_1.g6",1000);
+    test_canonical_label_file("data/graphs10_0.g6",40000);
+    test_canonical_label_file("data/graphs10_1.g6",40000);
     // test_canonical_label_file("data/graphs11_2.g6",1000);
     // test_canonical_label_file("data/graphs9_3.g6",1000);
 }
