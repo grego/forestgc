@@ -548,7 +548,7 @@ impl Graph {
             }
 
             // prune this branch if the quotient graph is already worse than the best found so far
-            // Experimentally, pruning here does not help much, so it is commented out
+            // Experimentally, pruning here does not help much, so it is commented out for now.
             // if let Some((best_graph_score, _)) = best {
             //     let gcls_score = self.graph_score_cls(&new_classes);
             //     if gcls_score > *best_graph_score {
