@@ -1,10 +1,7 @@
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use std::hash::Hash;
 use std::time::Instant;
 use std::io::BufRead;
-use rustc_hash::FxHashSet;
-use std::collections::HashMap;
 use std::collections::BTreeMap;
 
 type HashType = usize;
@@ -45,162 +42,39 @@ impl Graph {
         }
     }
 
-    #[inline(always)]
-    fn adj(&self, u: usize, v: usize) -> bool {
-        (self.adj[u] & (1u64 << v)) != 0
-    }
-
-    pub fn degrees(&self) -> Vec<usize> {
-        (0..self.num_vertices as usize).map(|v| self.adj[v].count_ones() as usize).collect()
-    }
-
-    pub fn induced_edge_count_mask(&self, mask: u64) -> usize {
-        // sum popcount(adj[v] & mask) for v in mask, then /2
-        let mut sum = 0usize;
-        let mut mm = mask;
-        while mm != 0 {
-            let lsb = mm.trailing_zeros() as usize;
-            sum += (self.adj[lsb] & mask).count_ones() as usize;
-            mm &= mm - 1;
-        }
-        sum / 2
-    }
-
-    pub fn degrees2_new(&self, degree_factor: usize) -> Vec<usize> {
-        let n = self.num_vertices as usize;
-        let mut deg2 = vec![0usize; n];
-        for v in 0..n {
-            // build neighbor mask including self
-            let mask = self.adj[v] | (1u64 << v);
-            // induced edges inside mask
-            let edges = self.induced_edge_count_mask(mask);
-            let neighbors_count = mask.count_ones() as usize;
-            deg2[v] = edges + degree_factor * (neighbors_count.saturating_sub(1));
-        }
-        deg2
-    }
-
-    pub fn degrees3_new(&self, degree_factor1: usize, degree_factor2: usize) -> Vec<usize> {
-        let n = self.num_vertices as usize;
-        let mut deg3 = vec![0usize; n];
-        for v in 0..n {
-            // compute 2-neighborhood mask
-            let mut mask = self.adj[v] | (1u64 << v);
-            // add neighbors of neighbors
-            let mut mm = self.adj[v];
-            while mm != 0 {
-                let u = mm.trailing_zeros() as usize;
-                mask |= self.adj[u];
-                mm &= mm - 1;
-            }
-            // count edges induced
-            let edges = self.induced_edge_count_mask(mask);
-            deg3[v] = edges;
-        }
-        let deg2 = self.degrees2(degree_factor1);
-        for v in 0..n {
-            deg3[v] += degree_factor2 * deg2[v];
-        }
-        deg3
-    }
-
-    pub fn degrees2(&self, degree_factor: usize) -> Vec<usize> {
-        // produces a list, for each vertex of the number of edges in the 1-neighborhood, i.e., 
-        // the number of edges adjacent to the vertices and their direct neighbors
-        let n = self.num_vertices as usize;
-        let mut deg2 = vec![0; n];
-        // let mat = self.adjacency_matrix();
-        for v in 0..n {
-            let mut neighbors = Vec::new();
-            for u in 0..n {
-                if self.adj(v, u) {
-                    neighbors.push(u);
-                }
-            }
-            neighbors.push(v); // include self
-            // count edges between all vertices in neighbors
-            for i in 0..neighbors.len() {
-                for j in i+1..neighbors.len() {
-                    if self.adj(neighbors[i], neighbors[j]) {
-                        deg2[v] += 1;
-                    }
-                }
-            }
-            deg2[v] += degree_factor * (neighbors.len() - 1) as usize; // scale to give more weight to this feature
-        }
-        deg2
-    }
-
-    pub fn degrees3(&self, degree_factor1: usize, degree_factor2: usize) -> Vec<usize> {
-        // produces a list, for each vertex of the number of edges in the 2-neighborhood, i.e., 
-        // the number of edges adjacent to the vertices and their direct neighbors
-        let n = self.num_vertices as usize;
-        let mut deg3 = vec![0; n];
-        // let mat = self.adjacency_matrix();
-        for v in 0..n {
-            let mut neighbors3 = FxHashSet::default();
-            neighbors3.insert(v);
-            for u in 0..n {
-                if self.adj(v, u) {
-                    neighbors3.insert(u);
-                    for w in 0..n {
-                        if self.adj(u, w) {
-                            neighbors3.insert(w);
-                        }
-                    }
-                }
-            }
-            // count edges between all vertices in neighbors
-            let neighbors: Vec<usize> = neighbors3.iter().cloned().collect();
-            for i in 0..neighbors.len() {
-                for j in i+1..neighbors.len() {
-                    if self.adj(neighbors[i], neighbors[j]) {
-                        deg3[v] += 1;
-                    }
-
-                }
-            }
-        }
-        let deg2 = self.degrees2(degree_factor1);
-        for v in 0..n {
-            deg3[v] += degree_factor2 * deg2[v];
-        }
-        deg3
-    }
-
 
     /// Returns a vector `res` such that `res[i]` is the number of vertices
     /// at graph distance exactly `i` from vertex `v`.
     pub fn distance_histogram(&self, v: u8) -> Vec<usize> {
-    let n = self.num_vertices as usize;
-    let mut res = vec![0usize; n + 1];
+        let n = self.num_vertices as usize;
+        let mut res = vec![0usize; n + 1];
 
-    let mut seen: u64 = 0;
-    let mut frontier: u64 = 1u64 << (v as usize);
-    seen |= frontier;
-    let mut dist = 0usize;
+        let mut seen: u64 = 0;
+        let mut frontier: u64 = 1u64 << (v as usize);
+        seen |= frontier;
+        let mut dist = 0usize;
 
-    while frontier != 0 {
-        // count bits in frontier -> number of vertices at distance dist
-        res[dist] = frontier.count_ones() as usize;
+        while frontier != 0 {
+            // count bits in frontier -> number of vertices at distance dist
+            res[dist] = frontier.count_ones() as usize;
 
-        // next frontier = neighbors(frontier) & !seen
-        let mut nbrs: u64 = 0;
-        let mut mm = frontier;
-        while mm != 0 {
-            let u = mm.trailing_zeros() as usize;
-            nbrs |= self.adj[u];
-            mm &= mm - 1;
+            // next frontier = neighbors(frontier) & !seen
+            let mut nbrs: u64 = 0;
+            let mut mm = frontier;
+            while mm != 0 {
+                let u = mm.trailing_zeros() as usize;
+                nbrs |= self.adj[u];
+                mm &= mm - 1;
+            }
+            let next_frontier = nbrs & !seen;
+            seen |= next_frontier;
+            frontier = next_frontier;
+            dist += 1;
         }
-        let next_frontier = nbrs & !seen;
-        seen |= next_frontier;
-        frontier = next_frontier;
-        dist += 1;
-    }
 
-    // trim trailing zeros
-    res.truncate(dist);
-    res
+        // trim trailing zeros
+        res.truncate(dist);
+        res
     }
 
     pub fn distance_histogram_keys(&self) -> Vec<usize> {
@@ -309,14 +183,14 @@ impl Graph {
         let start = Instant::now();
 
         let mut best: Option<(Graph, Vec<Vec<u8>>)> = None;
-        search_multi_bm(self, &classes, &mut best);
+        self.search_multi_bm(&classes, &mut best);
         let elapsed2 = start.elapsed();
         // println!("search_multi_bm took {:.6} ms", elapsed2.as_secs_f64() * 1e3);
 
         // display timing only if one took more than .01ms
         if elapsed.as_secs_f64() * 1e3 > 0.01 || elapsed2.as_secs_f64() * 1e3 > 0.01 {
             // let n_autos = self.automorphisms().len();
-            println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
+            // println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
         }
 
         best.unwrap()
@@ -407,22 +281,6 @@ impl Graph {
         Ok(g6_list)
     }
 
-    // pub fn initial_degree_classes(&self) -> Vec<u64> {
-    //     let g = self;
-    //     // let n = g.num_vertices as usize;
-    //     // let mut classes: Vec<Vec<u8>> = Vec::new();
-
-    //     use std::collections::HashMap;
-    //     // initial partition: one color per degree
-    //     let mut degree_classes: HashMap<u32, u64> = HashMap::new();
-    //     for v in 0..g.num_vertices as usize {
-    //         let deg = g.adj[v].count_ones();
-    //         *degree_classes.entry(deg).or_default() |= 1u64 << v;
-    //     }
-    //     let initial_classes: Vec<u64> = degree_classes.values().cloned().collect();
-    //     initial_classes
-    // }
-
     /// Refines a given original coloring based on given hash values provided for every vertex.
     /// Each of the original classes is (possibly) split into multiple classes of vertices of equal hash values.
     /// The new subclasses are sorted by hash value.
@@ -499,15 +357,6 @@ impl Graph {
 
         hashes
     }
-
-    // #[inline(always)]
-    // fn myhash2(&self, part: &[u64]) -> Vec<HashType> {
-    //     // combine distance histogram and myhash 2
-    //     let n = self.num_vertices as usize;
-    //     let mut hashes = vec![0usize; n];
-    //     let dist_histograms: Vec<Vec<usize>> = (0..self.num_vertices).map(|v| self.distance_histogram(v)).collect();
-
-    // }
 
     /// Refines a partition of vertices (given as bitmask vector) using adjacency information.
     /// Uses integer hashes instead of Vec<u8> signatures for speed.
@@ -612,74 +461,71 @@ impl Graph {
         bits
     }
 
+    fn search_multi_bm(
+        &self,
+        classes: &Vec<u64>,
+        best: &mut Option<(Graph, Vec<Vec<u8>>)>,
+    ) {
+        let mut perm = vec![0; self.num_vertices as usize];
 
-
-}
-
-
-fn search_multi_bm(
-    g: &Graph,
-    classes: &Vec<u64>,
-    best: &mut Option<(Graph, Vec<Vec<u8>>)>,
-) {
-    let mut perm = vec![0; g.num_vertices as usize];
-
-
-    if classes.iter().all(|cls| cls.count_ones() == 1) {
-        // we found a leaf
-        let mut idx = 0;
-        for cls in classes {
-            let v_idx = cls.trailing_zeros() as u8;
-            perm[v_idx as usize] = idx as u8;
-            idx += 1;
-        }
-        let g_perm = g.permute(&perm);
-        if let Some((best_graph, _)) = best {
-            // let best_bitstr = best_graph.bitstring();
-            // let g_bitstr = g_perm.bitstring();
-            if g_perm.edges < best_graph.edges {
-            // if g_bitstr < best_bitstr {
+        if classes.iter().all(|cls| cls.count_ones() == 1) {
+            // we found a leaf
+            let mut idx = 0;
+            for cls in classes {
+                let v_idx = cls.trailing_zeros() as u8;
+                perm[v_idx as usize] = idx as u8;
+                idx += 1;
+            }
+            let g_perm = self.permute(&perm);
+            if let Some((best_graph, _)) = best {
+                // let best_bitstr = best_graph.bitstring();
+                // let g_bitstr = g_perm.bitstring();
+                if g_perm.edges < best_graph.edges {
+                // if g_bitstr < best_bitstr {
+                    *best = Some((g_perm, vec![perm.clone()]));
+                } else if g_perm.edges == best_graph.edges {
+                // } else if best_bitstr == g_bitstr {
+                    if let Some((_, perms)) = best.as_mut() {
+                        perms.push(perm.clone());
+                    }
+                }
+            } else {
                 *best = Some((g_perm, vec![perm.clone()]));
-            } else if g_perm.edges == best_graph.edges {
-            // } else if best_bitstr == g_bitstr {
-                if let Some((_, perms)) = best.as_mut() {
-                    perms.push(perm.clone());
+            }
+            return;
+        }
+
+        let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
+        let class = &classes[class_pos];
+
+        for v in 0..self.num_vertices {
+            if (class & (1u64 << v)) == 0 {
+                continue;
+            }
+            let v = v as u8;
+            // print!(".");
+            let mut new_classes = Vec::new();
+            for (i, cls) in classes.iter().enumerate() {
+                if i == class_pos {
+                    let others = cls & !(1u64 << v);
+                    if others != 0 {
+                        new_classes.push(others);
+                    }
+                    new_classes.push(1u64 << v);
+                } else {
+                    new_classes.push(*cls);
                 }
             }
-        } else {
-            *best = Some((g_perm, vec![perm.clone()]));
+
+            let mut refined = new_classes.clone();
+            self.refine(&mut refined);
+            self.search_multi_bm(&refined, best);
         }
-        return;
     }
 
-    let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
-    let class = &classes[class_pos];
 
-    for v in 0..g.num_vertices {
-        if (class & (1u64 << v)) == 0 {
-            continue;
-        }
-        let v = v as u8;
-        // print!(".");
-        let mut new_classes = Vec::new();
-        for (i, cls) in classes.iter().enumerate() {
-            if i == class_pos {
-                let others = cls & !(1u64 << v);
-                if others != 0 {
-                    new_classes.push(others);
-                }
-                new_classes.push(1u64 << v);
-            } else {
-                new_classes.push(*cls);
-            }
-        }
 
-        let mut refined = new_classes.clone();
-        g.refine(&mut refined);
-        search_multi_bm(g, &refined, best);
-    } 
 }
-
 
 fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
     let mut perm: Vec<u8> = (0..n).collect();
@@ -710,9 +556,9 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
         if autos.len() > 1 {
             // print!("{}", autos.len());
             with_autos += 1;
-            if autos.len() > 2 {
-                println!("{} automorphisms", autos.len());
-            }
+            // if autos.len() > 2 {
+            //     println!("{} automorphisms", autos.len());
+            // }
         }
         // let g2 = Graph::from_g6("GSWOO?");
         // println!("Graph B: {} ", g2.to_g6());
