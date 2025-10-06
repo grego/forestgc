@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 type HashType = usize;
 
+type GraphScore = Vec<u64>;
+
 #[derive(Clone, Debug)]
 pub struct Graph {
     pub num_vertices: u8,
@@ -182,7 +184,7 @@ impl Graph {
 
         let start = Instant::now();
 
-        let mut best: Option<(Graph, Vec<Vec<u8>>)> = None;
+        let mut best: Option<(GraphScore, Vec<Vec<u8>>)> = None;
         self.search_multi_bm(&classes, &mut best);
         let elapsed2 = start.elapsed();
         // println!("search_multi_bm took {:.6} ms", elapsed2.as_secs_f64() * 1e3);
@@ -193,7 +195,9 @@ impl Graph {
             // println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
         }
 
-        best.unwrap()
+        let (_ , perms) = best.unwrap();
+        let gcanon = self.permute(&perms[0]);
+        (gcanon, perms)
     }
 
 
@@ -461,12 +465,27 @@ impl Graph {
         bits
     }
 
+    #[inline(always)]
+    fn graph_score(&self, perm: &[u8]) -> GraphScore {
+        let n = self.num_vertices as usize;
+        let mut adj = vec![0u64; n];
+        for &(u, v) in &self.edges {
+            let a = perm[u as usize] as usize;
+            let b = perm[v as usize] as usize;
+            adj[a] |= 1u64 << b;
+            adj[b] |= 1u64 << a;
+        }
+        adj
+    }
+
     fn search_multi_bm(
         &self,
         classes: &Vec<u64>,
-        best: &mut Option<(Graph, Vec<Vec<u8>>)>,
+        best: &mut Option<(GraphScore, Vec<Vec<u8>>)>,
     ) {
         let mut perm = vec![0; self.num_vertices as usize];
+
+
 
         if classes.iter().all(|cls| cls.count_ones() == 1) {
             // we found a leaf
@@ -476,21 +495,20 @@ impl Graph {
                 perm[v_idx as usize] = idx as u8;
                 idx += 1;
             }
-            let g_perm = self.permute(&perm);
-            if let Some((best_graph, _)) = best {
-                // let best_bitstr = best_graph.bitstring();
+            let gperm_score = self.graph_score(&perm);
+            if let Some((best_graph_score, _)) = best {
+                //let best_bitstr = best_graph.bitstring();
                 // let g_bitstr = g_perm.bitstring();
-                if g_perm.edges < best_graph.edges {
-                // if g_bitstr < best_bitstr {
-                    *best = Some((g_perm, vec![perm.clone()]));
-                } else if g_perm.edges == best_graph.edges {
+                if gperm_score < *best_graph_score {
+                    *best = Some((gperm_score, vec![perm.clone()]));
+                } else if gperm_score == *best_graph_score {
                 // } else if best_bitstr == g_bitstr {
                     if let Some((_, perms)) = best.as_mut() {
                         perms.push(perm.clone());
                     }
                 }
             } else {
-                *best = Some((g_perm, vec![perm.clone()]));
+                *best = Some((gperm_score, vec![perm.clone()]));
             }
             return;
         }
@@ -524,6 +542,68 @@ impl Graph {
     }
 
 
+
+    // fn search_multi_bm_old(
+    //     &self,
+    //     classes: &Vec<u64>,
+    //     best: &mut Option<(Graph, Vec<Vec<u8>>)>,
+    // ) {
+    //     let mut perm = vec![0; self.num_vertices as usize];
+
+    //     if classes.iter().all(|cls| cls.count_ones() == 1) {
+    //         // we found a leaf
+    //         let mut idx = 0;
+    //         for cls in classes {
+    //             let v_idx = cls.trailing_zeros() as u8;
+    //             perm[v_idx as usize] = idx as u8;
+    //             idx += 1;
+    //         }
+    //         let g_perm = self.permute(&perm);
+    //         if let Some((best_graph, _)) = best {
+    //             // let best_bitstr = best_graph.bitstring();
+    //             // let g_bitstr = g_perm.bitstring();
+    //             if g_perm.edges < best_graph.edges {
+    //             // if g_bitstr < best_bitstr {
+    //                 *best = Some((g_perm, vec![perm.clone()]));
+    //             } else if g_perm.edges == best_graph.edges {
+    //             // } else if best_bitstr == g_bitstr {
+    //                 if let Some((_, perms)) = best.as_mut() {
+    //                     perms.push(perm.clone());
+    //                 }
+    //             }
+    //         } else {
+    //             *best = Some((g_perm, vec![perm.clone()]));
+    //         }
+    //         return;
+    //     }
+
+    //     let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
+    //     let class = &classes[class_pos];
+
+    //     for v in 0..self.num_vertices {
+    //         if (class & (1u64 << v)) == 0 {
+    //             continue;
+    //         }
+    //         let v = v as u8;
+    //         // print!(".");
+    //         let mut new_classes = Vec::new();
+    //         for (i, cls) in classes.iter().enumerate() {
+    //             if i == class_pos {
+    //                 let others = cls & !(1u64 << v);
+    //                 if others != 0 {
+    //                     new_classes.push(others);
+    //                 }
+    //                 new_classes.push(1u64 << v);
+    //             } else {
+    //                 new_classes.push(*cls);
+    //             }
+    //         }
+
+    //         let mut refined = new_classes.clone();
+    //         self.refine(&mut refined);
+    //         self.search_multi_bm_old(&refined, best);
+    //     }
+    // }
 
 }
 
