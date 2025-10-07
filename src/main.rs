@@ -1,8 +1,8 @@
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use std::time::Instant;
-use std::io::BufRead;
 use std::collections::BTreeMap;
+use std::io::BufRead;
+use std::time::Instant;
 
 type HashType = usize;
 
@@ -15,9 +15,8 @@ pub struct Graph {
     pub adj: Vec<u64>, // adjacency matrix as bit-packed rows
 }
 
-
-// utilities
-fn inverse(perm: &Vec<u8>) -> Vec<u8> {
+/// Calculate the inverse of the provided permutation.
+pub fn inverse(perm: &[u8]) -> Vec<u8> {
     let mut inv = vec![0u8; perm.len()];
     for (i, &p) in perm.iter().enumerate() {
         inv[p as usize] = i as u8;
@@ -25,10 +24,10 @@ fn inverse(perm: &Vec<u8>) -> Vec<u8> {
     inv
 }
 
-fn compose(a: &Vec<u8>, b: &Vec<u8>) -> Vec<u8> {
+/// Calculate the composition of two permutations.
+pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
     a.iter().map(|&x| b[x as usize]).collect()
 }
-
 
 impl Graph {
     pub fn new(num_vertices: u8, edges: Vec<(u8, u8)>) -> Self {
@@ -43,7 +42,6 @@ impl Graph {
             adj,
         }
     }
-
 
     /// Returns a vector `res` such that `res[i]` is the number of vertices
     /// at graph distance exactly `i` from vertex `v`.
@@ -86,7 +84,7 @@ impl Graph {
             let hist = self.distance_histogram(v);
             let mut sum = 0;
             let mut factor = 1;
-            for (_, &count) in hist.iter().rev().enumerate() {
+            for &count in hist.iter().rev() {
                 sum += count * factor;
                 factor *= weight_factor;
             }
@@ -96,6 +94,7 @@ impl Graph {
         histograms
     }
 
+    /// Permute the graph with the provided permutation.
     pub fn permute(&self, perm: &[u8]) -> Graph {
         let mut edges: Vec<(u8, u8)> = self
             .edges
@@ -112,7 +111,10 @@ impl Graph {
     pub fn to_g6(&self) -> String {
         let graph = self;
         let n = graph.num_vertices;
-        assert!(n <= 62, "This encoder only supports graphs with at most 62 vertices.");
+        assert!(
+            n <= 62,
+            "This encoder only supports graphs with at most 62 vertices."
+        );
 
         // Write N(n)
         let mut result = String::new();
@@ -144,17 +146,16 @@ impl Graph {
         result
     }
 
-
     #[inline(always)]
     pub fn canonical_label(&self) -> (Graph, Vec<u8>) {
         let (g, pp) = self.canonical_labels();
-        return (g, pp[0].clone());
+        (g, pp[0].clone())
     }
 
     #[inline(always)]
     pub fn canonical_label_col(&self, init_colors: &[usize]) -> (Graph, Vec<u8>) {
         let (g, pp) = self.canonical_labels_col(init_colors);
-        return (g, pp[0].clone());
+        (g, pp[0].clone())
     }
 
     #[inline(always)]
@@ -166,13 +167,13 @@ impl Graph {
     pub fn canonical_labels_col(&self, init_colors: &[usize]) -> (Graph, Vec<Vec<u8>>) {
         let n = self.num_vertices as usize;
         // let mut classes: Vec<u64> = vec![]; //vec![(1<<n)-1]; // start with one big class
-        let mut classes: Vec<u64> = vec![(1<<n)-1]; // start with one big class
+        let mut classes: Vec<u64> = vec![(1 << n) - 1]; // start with one big class
         let start = Instant::now();
         // if let Some(colors) = init_colors {
         assert_eq!(init_colors.len(), n);
         // get some initial coloring by applying relatively strong vertex invariants
         classes = self.refined_coloring(&classes, init_colors);
- 
+
         let hash = self.distance_histogram_keys();
         classes = self.refined_coloring(&classes, &hash);
 
@@ -195,16 +196,15 @@ impl Graph {
             // println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
         }
 
-        let (_ , perms) = best.unwrap();
+        let (_, perms) = best.unwrap();
         let gcanon = self.permute(&perms[0]);
         (gcanon, perms)
     }
 
-
     #[inline(always)]
     pub fn automorphisms(&self) -> Vec<Vec<u8>> {
         let zero_colors = vec![0usize; self.num_vertices as usize];
-        return self.automorphisms_col(&zero_colors);
+        self.automorphisms_col(&zero_colors)
     }
     pub fn automorphisms_col(&self, init_colors: &[usize]) -> Vec<Vec<u8>> {
         let (_canon, best_perms) = self.canonical_labels_col(init_colors);
@@ -227,7 +227,7 @@ impl Graph {
         assert!(first >= 63, "Invalid graph6 string");
 
         let n = match first {
-            63..=126 => (first - 63) as u8,
+            63..=126 => first - 63,
             _ => panic!("This decoder only supports n ≤ 62 (1-byte N(n))"),
         };
 
@@ -263,26 +263,12 @@ impl Graph {
 
         Graph::new(n, edges)
     }
-    
+
     pub fn load_from_file(filename: &str) -> std::io::Result<Vec<String>> {
         let file = std::fs::File::open(filename)?;
         let reader = std::io::BufReader::new(file);
         // read first line and trsnform to int
-        let mut lines = reader.lines();
-        let first_line = lines.next().unwrap()?;
-        let num_graphs: usize = first_line.trim().parse().unwrap();
-        let mut g6_list = Vec::new();
-        for line in lines { // .take(num_graphs) {
-            let g6 = line?;
-            g6_list.push(g6);
-        }
-        if g6_list.len() != num_graphs {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Number of graphs in file does not match the first line",
-            ));
-        }
-        Ok(g6_list)
+        reader.lines().collect()
     }
 
     /// Refines a given original coloring based on given hash values provided for every vertex.
@@ -313,57 +299,8 @@ impl Graph {
         new_classes
     }
 
-    #[inline(always)]
-    fn adjacency_hash(&self, classes: &[u64]) -> Vec<u64> {
-        let n = self.num_vertices as usize;
-        let mut hashes = vec![0u64; n];
-        for v in 0..n {
-            let mut h: u64 = 0;
-            for (i, &cm) in classes.iter().enumerate() {
-                let cnt = (self.adj[v] & cm).count_ones() as u64;
-                // Simple multiplicative hash; 257 is small prime
-                h = h.wrapping_mul(257).wrapping_add(cnt + (i as u64) * 17);
-            }
-            hashes[v] = h;
-        }
-        hashes
-    }
-
-    /// Compute a structural hash per vertex based on the current partition.
-    /// Each color class is represented by a bitmask in `part`.
-    /// Assumes self.adj[v] is a u64 bitmask of neighbors of v.
-    #[inline(always)]
-    pub fn myhash(&self, part: &[u64]) -> Vec<HashType> {
-        let adj = &self.adj;
-        let n = self.num_vertices as usize;
-        let mut hashes:Vec<HashType> = vec![0; n];
-
-        // For each vertex, accumulate neighbor counts per color class
-        for v in 0..n {
-            let mut h: HashType = 0xcbf29ce484222325; // FNV offset basis
-            let a = adj[v];
-
-            for &mask in part {
-                // number of neighbors of v in this color class
-                let c = (a & mask).count_ones() as HashType;
-
-                // mix into hash (FNV-1a style)
-                h ^= c.wrapping_add(0x9e3779b97f4a7c15);
-                h = h.wrapping_mul(0x100000001b3);
-            }
-
-            // also include degree (for extra discrimination)
-            h ^= a.count_ones() as HashType;
-            h = h.wrapping_mul(0x9e3779b97f4a7c15);
-
-            hashes[v] = h;
-        }
-
-        hashes
-    }
-
     /// Refines a partition of vertices (given as bitmask vector) using adjacency information.
-    /// Uses integer hashes instead of Vec<u8> signatures for speed.
+    /// Uses integer hashes instead of Vec<u8> signamarch nativetures for speed.
     fn refine(&self, classes: &mut Vec<u64>) {
         let n = self.num_vertices as usize;
         let mut sigs = Vec::with_capacity(n);
@@ -491,21 +428,14 @@ impl Graph {
     //     adj
     // }
 
-    fn search_multi_bm(
-        &self,
-        classes: &Vec<u64>,
-        best: &mut Option<(GraphScore, Vec<Vec<u8>>)>,
-    ) {
+    fn search_multi_bm(&self, classes: &[u64], best: &mut Option<(GraphScore, Vec<Vec<u8>>)>) {
         let mut perm = vec![0; self.num_vertices as usize];
-
 
         if classes.iter().all(|cls| cls.count_ones() == 1) {
             // we found a leaf
-            let mut idx = 0;
-            for cls in classes {
+            for (i, cls) in classes.iter().enumerate() {
                 let v_idx = cls.trailing_zeros() as u8;
-                perm[v_idx as usize] = idx as u8;
-                idx += 1;
+                perm[v_idx as usize] = i as u8;
             }
             let gperm_score = self.graph_score(&perm);
             if let Some((best_graph_score, _)) = best {
@@ -514,7 +444,7 @@ impl Graph {
                 if gperm_score < *best_graph_score {
                     *best = Some((gperm_score, vec![perm.clone()]));
                 } else if gperm_score == *best_graph_score {
-                // } else if best_bitstr == g_bitstr {
+                    // } else if best_bitstr == g_bitstr {
                     if let Some((_, perms)) = best.as_mut() {
                         perms.push(perm.clone());
                     }
@@ -532,7 +462,6 @@ impl Graph {
             if (class & (1u64 << v)) == 0 {
                 continue;
             }
-            let v = v as u8;
             // print!(".");
             let mut new_classes = Vec::new();
             for (i, cls) in classes.iter().enumerate() {
@@ -563,7 +492,6 @@ impl Graph {
             self.search_multi_bm(&refined, best);
         }
     }
-
 }
 
 fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
@@ -573,7 +501,11 @@ fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
 }
 
 fn test_canonical_label_file(filename: &str, max_ntests: usize) {
-    let graphs = Graph::load_from_file(filename).unwrap().iter().map(|g6| Graph::from_g6(g6)).collect::<Vec<Graph>>();
+    let graphs = Graph::load_from_file(filename)
+        .unwrap()
+        .iter()
+        .map(|g6| Graph::from_g6(g6))
+        .collect::<Vec<Graph>>();
     let mut n_tests = graphs.len();
     println!("Loaded {} graphs from file {}", n_tests, filename);
     if max_ntests > 0 && n_tests > max_ntests {
@@ -583,10 +515,9 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     let n = graphs[0].num_vertices;
     let mut mismatches = 0;
     let start_total = Instant::now();
-    let mut with_autos =0;
+    let mut with_autos = 0;
 
-    for i in 0..n_tests {
-        let g = &graphs[i];
+    for (i, g) in graphs.iter().enumerate() {
         // let g = Graph::from_g6("GAl??G");
         // println!("Graph A: {} ", g.to_g6());
         let perm = random_permutation(&mut rng, n);
@@ -627,15 +558,16 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     println!("Tests run: {}", n_tests);
     println!("Mismatches: {}", mismatches);
     println!("Total time: {:.3} s", total_time.as_secs_f64());
-    println!("Avg per graph: {:.3} ms", total_time.as_secs_f64() * 1e3 / n_tests as f64);
+    println!(
+        "Avg per graph: {:.3} ms",
+        total_time.as_secs_f64() * 1e3 / n_tests as f64
+    );
     println!("Graphs with nontrivial automorphisms: {}", with_autos);
 }
 
-
 fn main() {
     // test_canonical_label_random(20);
-    test_canonical_label_file("data/graphs10_0.g6",40000);
-    test_canonical_label_file("data/graphs10_1.g6",40000);
+    test_canonical_label_file("graphs.g6", 40000);
     // test_canonical_label_file("data/graphs11_2.g6",1000);
     // test_canonical_label_file("data/graphs9_3.g6",1000);
 }
