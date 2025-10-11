@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::BufRead;
 
 type HashType = usize;
@@ -47,36 +47,30 @@ impl Graph {
     /// at graph distance exactly `i` from vertex `v`.
     pub fn distance_histogram(&self, v: u8) -> Vec<usize> {
         let n = self.num_vertices as usize;
-        let mut res = vec![0usize; n + 1];
+        let mut res = Vec::with_capacity(n);
 
         let mut seen: u64 = 0;
         let mut frontier: u64 = 1u64 << (v as usize);
         seen |= frontier;
-        let mut dist = 0usize;
 
         while frontier != 0 {
             // count bits in frontier -> number of vertices at distance dist
-            res[dist] = frontier.count_ones() as usize;
+            res.push(frontier.count_ones() as usize);
 
             // next frontier = neighbors(frontier) & !seen
             let mut nbrs: u64 = 0;
             for u in BitMask(frontier) {
                 nbrs |= self.adj[u];
             }
-            let next_frontier = nbrs & !seen;
-            seen |= next_frontier;
-            frontier = next_frontier;
-            dist += 1;
+            frontier = nbrs & !seen;
+            seen |= frontier;
         }
-
-        // trim trailing zeros
-        res.truncate(dist);
         res
     }
 
     pub fn distance_histogram_keys(&self) -> Vec<usize> {
         let weight_factor = self.num_vertices as usize;
-        let mut histograms = Vec::new();
+        let mut histograms = Vec::with_capacity(self.num_vertices as usize);
         for v in 0..self.num_vertices {
             let hist = self.distance_histogram(v);
             let mut sum = 0;
@@ -93,16 +87,7 @@ impl Graph {
 
     /// Permute the graph with the provided permutation.
     pub fn permute(&self, perm: &[u8]) -> Graph {
-        let mut edges: Vec<(u8, u8)> = self
-            .edges
-            .iter()
-            .map(|&(u, v)| {
-                let (a, b) = (perm[u as usize], perm[v as usize]);
-                if a < b { (a, b) } else { (b, a) }
-            })
-            .collect();
-        edges.sort();
-        Graph::new(self.num_vertices, edges)
+        Graph::new(self.num_vertices, permute_edges(&self.edges, perm))
     }
 
     pub fn to_g6(&self) -> String {
@@ -163,10 +148,8 @@ impl Graph {
 
     pub fn canonical_labels_col(&self, init_colors: &[usize]) -> (Graph, Vec<Vec<u8>>) {
         let n = self.num_vertices as usize;
-        // let mut classes: Vec<u64> = vec![]; //vec![(1<<n)-1]; // start with one big class
         let mut classes: Vec<u64> = vec![(1 << n) - 1]; // start with one big class
-        //let start = Instant::now();
-        // if let Some(colors) = init_colors {
+        // let start = Instant::now();
         assert_eq!(init_colors.len(), n);
         // get some initial coloring by applying relatively strong vertex invariants
         classes = self.refined_coloring(&classes, init_colors);
@@ -180,20 +163,25 @@ impl Graph {
         // let elapsed = start.elapsed();
         // println!("initial coloring took {:.6} ms", elapsed.as_secs_f64() * 1e3);
 
-        //let start = Instant::now();
-
         let mut best: Option<(GraphScore, Vec<Vec<u8>>)> = None;
         self.search_multi_bm(&classes, &mut best);
         // let elapsed2 = start.elapsed();
-        // println!("search_multi_bm took {:.6} ms", elapsed2.as_secs_f64() * 1e3);
+        // println!(
+        //     "search_multi_bm took {:.6} ms",
+        //     elapsed2.as_secs_f64() * 1e3
+        // );
 
         // display timing only if one took more than .01ms
-        // if elapsed.as_secs_f64() * 1e3 > 0.01 || elapsed2.as_secs_f64() * 1e3 > 0.01 {
-        // let n_autos = self.automorphisms().len();
-        // println!("Refinement took {:.6} ms, search took {:.6} ms", elapsed.as_secs_f64() * 1e3, elapsed2.as_secs_f64() * 1e3);
+        let (_, perms) = best.unwrap();
+        // if elapsed.as_secs_f64() * 1e3 > 0.01 || elapsed2.as_secs_f64() * 1e3 > 0.2 {
+        //     let n_autos = perms.len();
+        //     println!(
+        //         "Refinement took {:.6} ms, search took {:.6} ms, {n_autos} automorphisms",
+        //         elapsed.as_secs_f64() * 1e3,
+        //         elapsed2.as_secs_f64() * 1e3
+        //     );
         // }
 
-        let (_, perms) = best.unwrap();
         let gcanon = self.permute(&perms[0]);
         (gcanon, perms)
     }
@@ -203,6 +191,7 @@ impl Graph {
         let zero_colors = vec![0usize; self.num_vertices as usize];
         self.automorphisms_col(&zero_colors)
     }
+
     pub fn automorphisms_col(&self, init_colors: &[usize]) -> Vec<Vec<u8>> {
         let (_canon, best_perms) = self.canonical_labels_col(init_colors);
         if best_perms.is_empty() {
@@ -230,7 +219,7 @@ impl Graph {
 
         // Compute number of bits in the upper triangle: n(n-1)/2
         let num_bits = (n as usize * (n as usize - 1)) / 2;
-        let num_bytes = (num_bits + 5) / 6;
+        let num_bytes = num_bits.div_ceil(6);
 
         let bit_data = &bytes[1..=num_bytes];
         let mut bits = Vec::with_capacity(num_bits);
@@ -304,7 +293,7 @@ impl Graph {
 
                 // Compute integer signature for each vertex in this class
                 // let mut sigs: Vec<(usize, u8)> = Vec::new();
-                let mut hash_map: BTreeMap<HashType, u64> = BTreeMap::new();
+                let mut hashes: Vec<(HashType, u64)> = Vec::with_capacity(4);
                 for v in BitMask(class_mask) {
                     // Compute hash signature based on neighbor counts in each class
                     let mut h: usize = 0;
@@ -313,12 +302,18 @@ impl Graph {
                         // Simple multiplicative hash; 257 is small prime
                         h = h.wrapping_mul(257).wrapping_add(cnt + j * 17);
                     }
-                    *hash_map.entry(h).or_default() |= 1u64 << v;
+                    let p = hashes.iter().position(|(x, _)| *x == h).unwrap_or_else(|| {
+                        let len = hashes.len();
+                        hashes.push((h, 0));
+                        len
+                    });
+                    hashes[p].1 |= 1u64 << v;
                 }
-                if hash_map.len() > 1 {
+                if hashes.len() > 1 {
+                    hashes.sort_unstable_by_key(|(h, _)| *h);
                     // Replace class i by the new parts
                     classes.remove(i);
-                    for (k, (_, part)) in hash_map.into_iter().enumerate() {
+                    for (k, (_, part)) in hashes.into_iter().enumerate() {
                         classes.insert(i + k, part);
                     }
                     changed = true;
@@ -346,10 +341,9 @@ impl Graph {
     }
 
     fn search_multi_bm(&self, classes: &[u64], best: &mut Option<(GraphScore, Vec<Vec<u8>>)>) {
-        let mut perm = vec![0; self.num_vertices as usize];
-
-        if classes.iter().all(|cls| cls.count_ones() == 1) {
+        let Some(class_pos) = classes.iter().position(|cls| cls.count_ones() > 1) else {
             // we found a leaf
+            let mut perm = vec![0; self.num_vertices as usize];
             for (i, cls) in classes.iter().enumerate() {
                 let v_idx = cls.trailing_zeros() as u8;
                 perm[v_idx as usize] = i as u8;
@@ -369,17 +363,14 @@ impl Graph {
                 *best = Some((gperm_score, vec![perm.clone()]));
             }
             return;
-        }
-
-        let class_pos = classes.iter().position(|cls| cls.count_ones() > 1).unwrap();
+        };
         let class = &classes[class_pos];
 
         for v in 0..self.num_vertices {
             if (class & (1u64 << v)) == 0 {
                 continue;
             }
-            // print!(".");
-            let mut new_classes = Vec::new();
+            let mut new_classes = Vec::with_capacity(classes.len() + 1);
             for (i, cls) in classes.iter().enumerate() {
                 if i == class_pos {
                     let others = cls & !(1u64 << v);
@@ -392,22 +383,79 @@ impl Graph {
                 }
             }
 
-            // prune this branch if the quotient graph is already worse than the best found so far
-            // Experimentally, pruning here does not help much, so it is commented out for now.
-            // if let Some((best_graph_score, _)) = best {
-            //     let gcls_score = self.graph_score_cls(&new_classes);
-            //     if gcls_score > *best_graph_score {
-            //         print!("x");
-            //         continue;
-            //     }
-            // }
-
             let mut refined = new_classes;
             self.refine(&mut refined);
 
             self.search_multi_bm(&refined, best);
         }
     }
+
+    /// Turn valency 2 vertices into new edges.
+    pub fn simplify(&self) -> Self {
+        let mut new_edges = HashSet::new();
+        let mut perm: Vec<_> = (0..self.num_vertices).collect();
+        let mut new_v = 0;
+        for (i, &a) in self.adj.iter().enumerate() {
+            match a.count_ones() {
+                1 => {}
+                2 => {
+                    let mut iter = BitMask(a);
+                    let v = iter.next().unwrap();
+                    let w = iter.next().unwrap();
+                    new_edges.insert((v as u8, w as u8));
+                }
+                _ => {
+                    perm[i] = new_v;
+                    new_v += 1;
+                }
+            }
+        }
+        let new_edges: Vec<_> = new_edges.drain().collect();
+        Graph::new(new_v, permute_edges(&new_edges, &perm))
+    }
+
+    pub fn to_multigraph(&self) -> Self {
+        let mut new_edges = Vec::new();
+        let mut perm: Vec<_> = (0..self.num_vertices).collect();
+        let mut new_v = 0;
+        for (i, &a) in self.adj.iter().enumerate() {
+            match a.count_ones() {
+                1 => {}
+                2 => {
+                    let mut iter = BitMask(a);
+                    let v = iter.next().unwrap();
+                    let w = iter.next().unwrap();
+                    new_edges.push((v as u8, w as u8));
+                }
+                _ => {
+                    perm[i] = new_v;
+                    new_v += 1;
+                }
+            }
+        }
+        Graph::new(new_v, permute_edges(&new_edges, &perm))
+    }
+
+    pub fn to_dot(&self) -> String {
+        let mut s = "graph {\n".to_string();
+        for &(v, w) in &self.edges {
+            s.push_str(&format!("{v} -- {w}\n"));
+        }
+        s.push_str("}");
+        s
+    }
+}
+
+pub fn permute_edges(edges: &[(u8, u8)], perm: &[u8]) -> Vec<(u8, u8)> {
+    let mut edges: Vec<(u8, u8)> = edges
+        .iter()
+        .map(|&(u, v)| {
+            let (a, b) = (perm[u as usize], perm[v as usize]);
+            if a < b { (a, b) } else { (b, a) }
+        })
+        .collect();
+    edges.sort_unstable();
+    edges
 }
 
 impl Iterator for BitMask {

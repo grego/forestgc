@@ -4,6 +4,7 @@ use graph::Graph;
 
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+// use std::collections::HashSet;
 use std::time::Instant;
 
 fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
@@ -29,7 +30,9 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     let start_total = Instant::now();
     let mut with_autos = 0;
 
-    for (i, g) in graphs.iter().enumerate() {
+    // let mut unique_simple = HashSet::new();
+
+    for (i, g) in graphs.iter().enumerate().take(n_tests) {
         // let g = Graph::from_g6("GAl??G");
         // println!("Graph A: {} ", g.to_g6());
         let perm = random_permutation(&mut rng, n);
@@ -62,6 +65,8 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             println!("❌ Mismatch at test {i}");
         }
 
+        //unique_simple.insert(can1.edges);
+
         // println!("Test {i}: {:?} ms", duration.as_secs_f64() * 1e3);
     }
 
@@ -75,11 +80,12 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
         total_time.as_secs_f64() * 1e3 / n_tests as f64
     );
     println!("Graphs with nontrivial automorphisms: {}", with_autos);
+    // println!("Unique after simplification: {}", unique_simple.len());
 }
 
 fn main() {
     // test_canonical_label_random(20);
-    test_canonical_label_file("graphs.g6", 40000);
+    test_canonical_label_file("graphs.g6", 1_000_000);
     // test_canonical_label_file("data/graphs11_2.g6",1000);
     // test_canonical_label_file("data/graphs9_3.g6",1000);
 }
