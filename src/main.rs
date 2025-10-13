@@ -5,6 +5,7 @@ use graph::Graph;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 // use std::collections::HashSet;
+use std::fs;
 use std::time::Instant;
 
 fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
@@ -25,13 +26,26 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
         n_tests = max_ntests;
     }
     let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
-    let n = graphs[0].num_vertices;
     let mut mismatches = 0;
     let start_total = Instant::now();
     let mut with_autos = 0;
 
     // let mut unique_simple = HashSet::new();
 
+    // let edges = vec![
+    //     (0, 1),
+    //     (0, 2),
+    //     (1, 2),
+    //     (1, 3),
+    //     (1, 5),
+    //     (2, 4),
+    //     (3, 4),
+    //     (4, 5),
+    // ];
+    // let graphs = vec![Graph::new(6, edges)];
+
+    let n = graphs[0].num_vertices;
+    println!("{n}");
     for (i, g) in graphs.iter().enumerate().take(n_tests) {
         // let g = Graph::from_g6("GAl??G");
         // println!("Graph A: {} ", g.to_g6());
@@ -65,6 +79,16 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             println!("❌ Mismatch at test {i}");
         }
 
+        let g = g.simplify();
+        // let _ = fs::write(format!("graphs/g{i}.dot"), g.to_dot());
+        // let start3 = Instant::now();
+        // let subforests = g.subforests(3, 8);
+        // println!(
+        //     "{} subforests: {:.3} ms",
+        //     subforests.len(),
+        //     start3.elapsed().as_secs_f64() * 1e3
+        // );
+
         //unique_simple.insert(can1.edges);
 
         // println!("Test {i}: {:?} ms", duration.as_secs_f64() * 1e3);
@@ -84,6 +108,7 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
 }
 
 fn main() {
+    fs::create_dir_all("graphs").unwrap();
     // test_canonical_label_random(20);
     test_canonical_label_file("graphs.g6", 1_000_000);
     // test_canonical_label_file("data/graphs11_2.g6",1000);

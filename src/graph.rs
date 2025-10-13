@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::io::BufRead;
+use std::mem;
 
 type HashType = usize;
 
@@ -30,7 +31,8 @@ pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
 }
 
 impl Graph {
-    pub fn new(num_vertices: u8, edges: Vec<(u8, u8)>) -> Self {
+    pub fn new(num_vertices: u8, mut edges: Vec<(u8, u8)>) -> Self {
+        edges.sort_unstable();
         let mut adj = vec![0u64; num_vertices as usize];
         for &(u, v) in &edges {
             adj[u as usize] |= 1u64 << v;
@@ -414,6 +416,56 @@ impl Graph {
         Graph::new(new_v, permute_edges(&new_edges, &perm))
     }
 
+    pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Self> {
+        // The currently found forest.
+        let mut forest = Vec::with_capacity(self.num_vertices as usize - 1);
+        // For each vertex, the smallest number of a vertex in its component
+        // in the currently found forest.
+        let mut components: Vec<_> = (0..self.num_vertices).collect();
+        // Bitmasks of the component of the current vertex.
+        let mut component_masks: Vec<_> = (0..self.num_vertices).map(|i| 1_u64 << i).collect();
+        let mut stack: Vec<(_, _, _, u64)> = Vec::with_capacity(self.num_vertices as usize - 1);
+        let mut output = Vec::new();
+
+        let mut i = 0;
+        loop {
+            if forest.len() == max_edges || i == self.edges.len() {
+                let Some((j, cv, cw, mask)) = stack.pop() else {
+                    break;
+                };
+                forest.pop();
+                component_masks[cv as usize] &= !mask;
+                for u in BitMask(mask) {
+                    components[u as usize] = cw;
+                }
+                i = j + 1;
+                continue;
+            }
+
+            let (mut v, mut w) = self.edges[i];
+            let (mut cv, mut cw) = (components[v as usize], components[w as usize]);
+            if cv == cw {
+                i += 1;
+                continue;
+            } else if cw < cv {
+                mem::swap(&mut cv, &mut cw);
+                mem::swap(&mut v, &mut w);
+            }
+            let mask = component_masks[cw as usize];
+            stack.push((i, cv, cw, mask));
+            component_masks[cv as usize] |= mask;
+            for u in BitMask(mask) {
+                components[u as usize] = cv;
+            }
+            forest.push((v, w));
+            if min_edges <= forest.len() && forest.len() <= max_edges {
+                output.push(Graph::new(self.num_vertices, forest.clone()));
+            }
+            i += 1;
+        }
+        output
+    }
+
     pub fn to_multigraph(&self) -> Self {
         let mut new_edges = Vec::new();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
@@ -436,25 +488,25 @@ impl Graph {
         Graph::new(new_v, permute_edges(&new_edges, &perm))
     }
 
+    /// Output the graph in the graphviz dot format
     pub fn to_dot(&self) -> String {
         let mut s = "graph {\n".to_string();
         for &(v, w) in &self.edges {
             s.push_str(&format!("{v} -- {w}\n"));
         }
-        s.push_str("}");
+        s.push('}');
         s
     }
 }
 
 pub fn permute_edges(edges: &[(u8, u8)], perm: &[u8]) -> Vec<(u8, u8)> {
-    let mut edges: Vec<(u8, u8)> = edges
+    let edges: Vec<(u8, u8)> = edges
         .iter()
         .map(|&(u, v)| {
             let (a, b) = (perm[u as usize], perm[v as usize]);
             if a < b { (a, b) } else { (b, a) }
         })
         .collect();
-    edges.sort_unstable();
     edges
 }
 
