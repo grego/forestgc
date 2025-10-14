@@ -416,7 +416,7 @@ impl Graph {
         Graph::new(new_v, permute_edges(&new_edges, &perm))
     }
 
-    pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Self> {
+    pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<(u8, u8)>> {
         // The currently found forest.
         let mut forest = Vec::with_capacity(self.num_vertices as usize - 1);
         // For each vertex, the smallest number of a vertex in its component
@@ -459,7 +459,9 @@ impl Graph {
             }
             forest.push((v, w));
             if min_edges <= forest.len() && forest.len() <= max_edges {
-                output.push(Graph::new(self.num_vertices, forest.clone()));
+                let mut fc = forest.clone();
+                fc.shrink_to_fit();
+                output.push(fc);
             }
             i += 1;
         }

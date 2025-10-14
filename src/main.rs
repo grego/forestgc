@@ -4,6 +4,7 @@ use graph::Graph;
 
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use std::collections::HashMap;
 // use std::collections::HashSet;
 use std::fs;
 use std::time::Instant;
@@ -30,22 +31,15 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     let start_total = Instant::now();
     let mut with_autos = 0;
 
-    // let mut unique_simple = HashSet::new();
-
-    // let edges = vec![
-    //     (0, 1),
-    //     (0, 2),
-    //     (1, 2),
-    //     (1, 3),
-    //     (1, 5),
-    //     (2, 4),
-    //     (3, 4),
-    //     (4, 5),
-    // ];
-    // let graphs = vec![Graph::new(6, edges)];
+    let mut unique_forests = HashMap::new();
+    let mut uf = Vec::new();
+    let mut sf_num = 0;
+    let mut sf_edges_num: usize = 0;
 
     let n = graphs[0].num_vertices;
-    println!("{n}");
+
+    println!("{}", std::mem::size_of::<[(u8, u8); 4]>());
+
     for (i, g) in graphs.iter().enumerate().take(n_tests) {
         // let g = Graph::from_g6("GAl??G");
         // println!("Graph A: {} ", g.to_g6());
@@ -79,15 +73,28 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             println!("❌ Mismatch at test {i}");
         }
 
-        let g = g.simplify();
-        // let _ = fs::write(format!("graphs/g{i}.dot"), g.to_dot());
+        let (gs, _) = g.simplify().canonical_label();
+        // println!("{}", gs.edges.len());
+        if !unique_forests.get(&gs.edges).is_some() {
+            let subforests = gs.subforests(5, 14);
+            sf_num += subforests.len();
+            sf_edges_num += subforests.iter().map(|f| f.len()).sum::<usize>();
+            unique_forests.insert(gs.edges.clone(), ());
+            uf.push(subforests);
+        }
+        // let _ = fs::write(format!("graphs/g{i}.dot"), gs.to_dot());
         // let start3 = Instant::now();
-        // let subforests = g.subforests(3, 8);
-        // println!(
-        //     "{} subforests: {:.3} ms",
-        //     subforests.len(),
-        //     start3.elapsed().as_secs_f64() * 1e3
-        // );
+        // let subforests = gs.subforests(5, 14);
+        // if subforests.len() > 0 {
+        //     println!(
+        //         "{} subforests: {:.3} ms",
+        //         subforests.len(),
+        //         start3.elapsed().as_secs_f64() * 1e3
+        //     );
+        // }
+        // for (j, f) in subforests.iter().enumerate() {
+        //     let _ = fs::write(format!("graphs/g{i}_f{j}.dot"), f.to_dot());
+        // }
 
         //unique_simple.insert(can1.edges);
 
@@ -104,7 +111,10 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
         total_time.as_secs_f64() * 1e3 / n_tests as f64
     );
     println!("Graphs with nontrivial automorphisms: {}", with_autos);
-    // println!("Unique after simplification: {}", unique_simple.len());
+    println!(
+        "Unique after simplification: {} {sf_num} {sf_edges_num}",
+        unique_forests.len()
+    );
 }
 
 fn main() {
