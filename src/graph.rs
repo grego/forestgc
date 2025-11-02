@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::io::BufRead;
 use std::mem;
 
@@ -6,10 +6,12 @@ type HashType = usize;
 
 type GraphScore = Vec<u64>;
 
+type Edge = (u8, u8);
+
 #[derive(Clone, Debug)]
 pub struct Graph {
     pub num_vertices: u8,
-    pub edges: Vec<(u8, u8)>,
+    pub edges: Vec<Edge>,
     pub adj: Vec<u64>, // adjacency matrix as bit-packed rows
 }
 
@@ -23,6 +25,37 @@ pub fn inverse(perm: &[u8]) -> Vec<u8> {
         inv[p as usize] = i as u8;
     }
     inv
+}
+
+/// Compute the sign of the permutation on the provided subset.
+/// The caller must ensure that the subset is ordered and perm remains a bijection
+/// when restricted to it.
+pub fn sign_subset<
+    I: IntoIterator<Item = J, IntoIter = K>,
+    J: Into<usize>,
+    K: Iterator<Item = J> + Clone,
+>(
+    perm: &[u8],
+    subset: I,
+) -> i8 {
+    let mut subset = subset.into_iter();
+    let mut sign = 1;
+    while let Some(i) = subset.next() {
+        let ss = subset.clone();
+        let i = i.into();
+        for j in ss {
+            let j = j.into();
+            if perm[i] > perm[j] {
+                sign *= -1;
+            }
+        }
+    }
+    sign
+}
+
+/// Compute the sign of a permutation
+pub fn sign(perm: &[u8]) -> i8 {
+    sign_subset(perm, 1..perm.len())
 }
 
 /// Calculate the composition of two permutations.
@@ -392,19 +425,47 @@ impl Graph {
         }
     }
 
+    /// Add a new unary vertex connected to the provided vertex.
+    pub fn add_unary_vertex(&mut self, v: u8) {
+        let new = self.num_vertices;
+        self.num_vertices += 1;
+        self.edges.push((v, new));
+        self.adj[v as usize] |= 1 << new;
+        self.adj.push(1 << v);
+    }
+
+    /// Delete the vertex with the given index.
+    pub fn delete_vertex(&mut self, v: u8) {
+        self.num_vertices -= 1;
+        let dec = |w| if w < v { w } else { w - 1 };
+        let edges = mem::take(&mut self.edges);
+        self.edges = edges
+            .into_iter()
+            .filter(|(u, w)| *u == v || *w == v)
+            .map(|(u, w)| (dec(u), dec(w)))
+            .collect();
+        self.adj.remove(v as usize);
+        let mask = (1 << v) - 1;
+        for a in self.adj.iter_mut() {
+            *a = (*a & mask) | ((*a >> 1) & !mask);
+        }
+    }
+
     /// Turn valency 2 vertices into new edges.
-    pub fn simplify(&self) -> Self {
-        let mut new_edges = HashSet::new();
+    /// Return the list of original indices of the new edges.
+    pub fn simplify(&self, retain_multiedges: bool) -> (Self, Vec<(Edge, u8)>) {
+        let mut new_edges = HashMap::new();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
         let mut new_v = 0;
         for (i, &a) in self.adj.iter().enumerate() {
             match a.count_ones() {
-                1 => {}
+                0..=1 => {}
                 2 => {
                     let mut iter = BitMask(a);
                     let v = iter.next().unwrap();
                     let w = iter.next().unwrap();
-                    new_edges.insert((v as u8, w as u8));
+                    let e = new_edges.entry((v as u8, w as u8)).or_insert((i as u8, 0));
+                    e.1 += 1;
                 }
                 _ => {
                     perm[i] = new_v;
@@ -412,11 +473,19 @@ impl Graph {
                 }
             }
         }
-        let new_edges: Vec<_> = new_edges.drain().collect();
-        Graph::new(new_v, permute_edges(&new_edges, &perm))
+        let new_edges: Vec<_> = new_edges
+            .drain()
+            .filter_map(|(e, (i, c))| Some((e, i)).filter(|_| retain_multiedges || c == 1))
+            .collect();
+        let mut perm_edges = permute_indexed_edges(&new_edges, &perm);
+        perm_edges.sort_unstable_by_key(|(e, _)| *e);
+        (
+            Graph::new(new_v, perm_edges.iter().cloned().map(|(e, _)| e).collect()),
+            perm_edges,
+        )
     }
 
-    pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<(u8, u8)>> {
+    pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<Edge>> {
         // The currently found forest.
         let mut forest = Vec::with_capacity(self.num_vertices as usize - 1);
         // For each vertex, the smallest number of a vertex in its component
@@ -436,7 +505,7 @@ impl Graph {
                 forest.pop();
                 component_masks[cv as usize] &= !mask;
                 for u in BitMask(mask) {
-                    components[u as usize] = cw;
+                    components[u] = cw;
                 }
                 i = j + 1;
                 continue;
@@ -455,7 +524,7 @@ impl Graph {
             stack.push((i, cv, cw, mask));
             component_masks[cv as usize] |= mask;
             for u in BitMask(mask) {
-                components[u as usize] = cv;
+                components[u] = cv;
             }
             forest.push((v, w));
             if min_edges <= forest.len() && forest.len() <= max_edges {
@@ -502,14 +571,23 @@ impl Graph {
 }
 
 pub fn permute_edges(edges: &[(u8, u8)], perm: &[u8]) -> Vec<(u8, u8)> {
-    let edges: Vec<(u8, u8)> = edges
+    edges
         .iter()
         .map(|&(u, v)| {
             let (a, b) = (perm[u as usize], perm[v as usize]);
             if a < b { (a, b) } else { (b, a) }
         })
-        .collect();
+        .collect()
+}
+
+pub fn permute_indexed_edges(edges: &[((u8, u8), u8)], perm: &[u8]) -> Vec<((u8, u8), u8)> {
     edges
+        .iter()
+        .map(|&((u, v), i)| {
+            let (a, b) = (perm[u as usize], perm[v as usize]);
+            if a < b { ((a, b), i) } else { ((b, a), i) }
+        })
+        .collect()
 }
 
 impl Iterator for BitMask {
