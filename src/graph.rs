@@ -635,3 +635,71 @@ impl Iterator for BitMask {
         Some(u)
     }
 }
+
+
+
+
+
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+// This is a really bad adding function, its purpose is to fail in this
+// example.
+#[allow(dead_code)]
+fn bad_add(a: i32, b: i32) -> i32 {
+    a - b
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        assert_eq!(add(1, 2), 3);
+    }
+
+    //#[test]
+    fn test_bad_add() {
+        // This assert would fire and test will fail.
+        // Please note, that private functions can be tested too!
+        assert_eq!(bad_add(1, 2), 3);
+    }
+
+
+// Subforests function
+    #[test]
+    fn test_subforest() {
+        let v:u8 = 8;
+
+        let peterson_edges:Vec<Edge>  = vec![(0,1),(1,2),(2,3),(3,4),(4,0), (5,8),(5,9),(6,7),(6,9),(7,8), (0,5),(1,6),(2,8),(3,9),(4,7)];
+        let petersen:Graph = Graph::new(10, peterson_edges);
+
+
+        let sfs:Vec<Vec<Edge>> = Vec::new();
+
+
+        let t:usize = petersen.subforests(3, 3).len();
+        let u:usize = 2730 / 6;
+
+        assert_eq!(t, u);
+    }
+
+
+//pub fn new(num_vertices: u8, mut edges: Vec<(u8, u8)>) -> Self {
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
