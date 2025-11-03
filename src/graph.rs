@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::io::BufRead;
 use std::mem;
 
-type HashType = usize;
+type HashType = u128;
 
 type GraphScore = Vec<u64>;
 
@@ -103,15 +103,15 @@ impl Graph {
         res
     }
 
-    pub fn distance_histogram_keys(&self) -> Vec<usize> {
-        let weight_factor = self.num_vertices as usize;
+    pub fn distance_histogram_keys(&self) -> Vec<u128> {
+        let weight_factor = self.num_vertices as u128;
         let mut histograms = Vec::with_capacity(self.num_vertices as usize);
         for v in 0..self.num_vertices {
             let hist = self.distance_histogram(v);
-            let mut sum = 0;
-            let mut factor = 1;
+            let mut sum: u128 = 0;
+            let mut factor: u128 = 1;
             for &count in hist.iter().rev() {
-                sum += count * factor;
+                sum += count as u128 * factor;
                 factor *= weight_factor;
             }
             histograms.push(sum);
@@ -170,18 +170,18 @@ impl Graph {
     }
 
     #[inline(always)]
-    pub fn canonical_label_col(&self, init_colors: &[usize]) -> (Graph, Vec<u8>) {
+    pub fn canonical_label_col(&self, init_colors: &[u128]) -> (Graph, Vec<u8>) {
         let (g, pp) = self.canonical_labels_col(init_colors);
         (g, pp[0].clone())
     }
 
     #[inline(always)]
     pub fn canonical_labels(&self) -> (Graph, Vec<Vec<u8>>) {
-        let zero_colors = vec![0usize; self.num_vertices as usize];
+        let zero_colors = vec![0u128; self.num_vertices as usize];
         self.canonical_labels_col(&zero_colors)
     }
 
-    pub fn canonical_labels_col(&self, init_colors: &[usize]) -> (Graph, Vec<Vec<u8>>) {
+    pub fn canonical_labels_col(&self, init_colors: &[u128]) -> (Graph, Vec<Vec<u8>>) {
         let n = self.num_vertices as usize;
         let mut classes: Vec<u64> = vec![(1 << n) - 1]; // start with one big class
         // let start = Instant::now();
@@ -223,11 +223,11 @@ impl Graph {
 
     #[inline(always)]
     pub fn automorphisms(&self) -> Vec<Vec<u8>> {
-        let zero_colors = vec![0usize; self.num_vertices as usize];
+        let zero_colors = vec![0u128; self.num_vertices as usize];
         self.automorphisms_col(&zero_colors)
     }
 
-    pub fn automorphisms_col(&self, init_colors: &[usize]) -> Vec<Vec<u8>> {
+    pub fn automorphisms_col(&self, init_colors: &[u128]) -> Vec<Vec<u8>> {
         let (_canon, best_perms) = self.canonical_labels_col(init_colors);
         if best_perms.is_empty() {
             return vec![];
@@ -331,11 +331,11 @@ impl Graph {
                 let mut hashes: Vec<(HashType, u64)> = Vec::with_capacity(4);
                 for v in BitMask(class_mask) {
                     // Compute hash signature based on neighbor counts in each class
-                    let mut h: usize = 0;
+                    let mut h: u128 = 0;
                     for (j, &cm) in classes.iter().enumerate() {
-                        let cnt = (self.adj[v] & cm).count_ones() as usize;
+                        let cnt = (self.adj[v] & cm).count_ones() as u128;
                         // Simple multiplicative hash; 257 is small prime
-                        h = h.wrapping_mul(257).wrapping_add(cnt + j * 17);
+                        h = h.wrapping_mul(257).wrapping_add(cnt + j as u128 * 17);
                     }
                     let p = hashes.iter().position(|(x, _)| *x == h).unwrap_or_else(|| {
                         let len = hashes.len();
@@ -636,10 +636,6 @@ impl Iterator for BitMask {
     }
 }
 
-
-
-
-
 pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
@@ -668,38 +664,37 @@ mod tests {
         assert_eq!(bad_add(1, 2), 3);
     }
 
-
-// Subforests function
+    // Subforests function
     #[test]
     fn test_subforest() {
-        let v:u8 = 8;
+        let v: u8 = 8;
 
-        let peterson_edges:Vec<Edge>  = vec![(0,1),(1,2),(2,3),(3,4),(4,0), (5,8),(5,9),(6,7),(6,9),(7,8), (0,5),(1,6),(2,8),(3,9),(4,7)];
-        let petersen:Graph = Graph::new(10, peterson_edges);
+        let peterson_edges: Vec<Edge> = vec![
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+            (4, 0),
+            (5, 8),
+            (5, 9),
+            (6, 7),
+            (6, 9),
+            (7, 8),
+            (0, 5),
+            (1, 6),
+            (2, 8),
+            (3, 9),
+            (4, 7),
+        ];
+        let petersen: Graph = Graph::new(10, peterson_edges);
 
+        let sfs: Vec<Vec<Edge>> = Vec::new();
 
-        let sfs:Vec<Vec<Edge>> = Vec::new();
-
-
-        let t:usize = petersen.subforests(3, 3).len();
-        let u:usize = 2730 / 6;
+        let t: usize = petersen.subforests(3, 3).len();
+        let u: usize = 2730 / 6;
 
         assert_eq!(t, u);
     }
 
-
-//pub fn new(num_vertices: u8, mut edges: Vec<(u8, u8)>) -> Self {
-
-
-
-
-
-
-
-
-
-
-
-
+    //pub fn new(num_vertices: u8, mut edges: Vec<(u8, u8)>) -> Self {
 }
-

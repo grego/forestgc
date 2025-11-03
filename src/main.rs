@@ -85,11 +85,11 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             //     println!("❌ Mismatch at test {i}");
             // }
 
-            let (gs, dict) = can1.simplify(true);
+            let (gs, dict) = can1.simplify(false);
             // println!("{}", gs.edges.len());
             // if !unique_forests.contains_key(&gs.edges) {
             // let (mut clt, mut prmt) = (0, 0);
-            let subforests = gs.subforests(3, 3);
+            let subforests = gs.subforests(10, 10);
             let mut unique_perms = HashSet::new();
             // for sf in (0..can1.num_vertices)
             //     .filter(|v| can1.adj[*v as usize].count_ones() == 2)
@@ -108,7 +108,7 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
                     .collect();
                 sf.sort_unstable();
 
-                let mut mask = 0;
+                let mut mask = 0_u64;
                 for &i in &sf {
                     mask |= 1 << i;
                 }
