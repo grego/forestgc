@@ -451,6 +451,31 @@ impl Graph {
         }
     }
 
+    /// Contract the neigborhood of a binary vertex.
+    pub fn contract_binary_neighborhood(&mut self, mut v: u8) {
+        self.num_vertices -= 1;
+        let mut iter = BitMask(self.adj[v as usize]);
+        let u = iter.next().unwrap() as u8;
+        let mut w = iter.next().unwrap() as u8;
+        let f = |a| match a {
+            a if a == v => None,
+            a if a == w => Some(u),
+            _ => Some(a - (a > v) as u8 - (a > w) as u8),
+        };
+        let edges = mem::take(&mut self.edges);
+        self.edges = edges
+            .into_iter()
+            .filter_map(|(a, b)| Some((f(a)?, f(b)?)))
+            .collect();
+        if v > w {
+            mem::swap(&mut v, &mut w);
+        }
+        for a in self.adj.iter_mut() {
+            *a = delete_vertex_from_mask(v, *a);
+            *a = delete_vertex_from_mask(w - 1, *a);
+        }
+    }
+
     /// Turn valency 2 vertices into new edges.
     /// Return the list of original indices of the new edges.
     pub fn simplify(&self, retain_multiedges: bool) -> (Self, Vec<(Edge, u8)>) {
@@ -511,14 +536,14 @@ impl Graph {
                 continue;
             }
 
-            let (mut v, mut w) = self.edges[i];
+            let (v, w) = self.edges[i];
             let (mut cv, mut cw) = (components[v as usize], components[w as usize]);
             if cv == cw {
                 i += 1;
                 continue;
             } else if cw < cv {
                 mem::swap(&mut cv, &mut cw);
-                mem::swap(&mut v, &mut w);
+                //mem::swap(&mut v, &mut w);
             }
             let mask = component_masks[cw as usize];
             stack.push((i, cv, cw, mask));
@@ -588,6 +613,12 @@ pub fn permute_indexed_edges(edges: &[((u8, u8), u8)], perm: &[u8]) -> Vec<((u8,
             if a < b { ((a, b), i) } else { ((b, a), i) }
         })
         .collect()
+}
+
+/// Remove the v-th bit of the mask, shifting the bits upper than v one place to the right.
+pub fn delete_vertex_from_mask(v: u8, mask: u64) -> u64 {
+    let m = (1 << v) - 1;
+    (mask & m) | ((mask >> 1) & !m)
 }
 
 impl Iterator for BitMask {
