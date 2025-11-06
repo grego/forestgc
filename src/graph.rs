@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::io::BufRead;
 use std::mem;
 
 type HashType = u128;
@@ -16,7 +15,8 @@ pub struct Graph {
 }
 
 /// An iterator over the position of bits in a bitmask.
-pub struct BitMask(pub u64);
+#[derive(Clone, Copy)]
+pub struct BitPositions(pub u64);
 
 /// Calculate the inverse of the provided permutation.
 pub fn inverse(perm: &[u8]) -> Vec<u8> {
@@ -94,7 +94,7 @@ impl Graph {
 
             // next frontier = neighbors(frontier) & !seen
             let mut nbrs: u64 = 0;
-            for u in BitMask(frontier) {
+            for u in BitPositions(frontier) {
                 nbrs |= self.adj[u];
             }
             frontier = nbrs & !seen;
@@ -285,13 +285,6 @@ impl Graph {
         Graph::new(n, edges)
     }
 
-    pub fn load_from_file(filename: &str) -> std::io::Result<Vec<String>> {
-        let file = std::fs::File::open(filename)?;
-        let reader = std::io::BufReader::new(file);
-        // read first line and trsnform to int
-        reader.lines().collect()
-    }
-
     /// Refines a given original coloring based on given hash values provided for every vertex.
     /// Each of the original classes is (possibly) split into multiple classes of vertices of equal hash values.
     /// The new subclasses are sorted by hash value.
@@ -302,7 +295,7 @@ impl Graph {
         for &class_mask in orig_classes.iter().filter(|c| **c != 0) {
             // Map from hash value to bitmask of vertices in this class with that hash
             let mut hash_map: BTreeMap<HashType, u64> = BTreeMap::new();
-            for v in BitMask(class_mask) {
+            for v in BitPositions(class_mask) {
                 let h = hashes[v];
                 *hash_map.entry(h).or_default() |= 1u64 << v;
             }
@@ -329,7 +322,7 @@ impl Graph {
                 // Compute integer signature for each vertex in this class
                 // let mut sigs: Vec<(usize, u8)> = Vec::new();
                 let mut hashes: Vec<(HashType, u64)> = Vec::with_capacity(4);
-                for v in BitMask(class_mask) {
+                for v in BitPositions(class_mask) {
                     // Compute hash signature based on neighbor counts in each class
                     let mut h: u128 = 0;
                     for (j, &cm) in classes.iter().enumerate() {
@@ -454,7 +447,7 @@ impl Graph {
     /// Contract the neigborhood of a binary vertex.
     pub fn contract_binary_neighborhood(&mut self, mut v: u8) {
         self.num_vertices -= 1;
-        let mut iter = BitMask(self.adj[v as usize]);
+        let mut iter = BitPositions(self.adj[v as usize]);
         let u = iter.next().unwrap() as u8;
         let mut w = iter.next().unwrap() as u8;
         let f = |a| match a {
@@ -471,8 +464,8 @@ impl Graph {
             mem::swap(&mut v, &mut w);
         }
         for a in self.adj.iter_mut() {
-            *a = delete_vertex_from_mask(v, *a);
-            *a = delete_vertex_from_mask(w - 1, *a);
+            *a = delete_vertex_from_mask(*a, v);
+            *a = delete_vertex_from_mask(*a, w - 1);
         }
     }
 
@@ -486,7 +479,7 @@ impl Graph {
             match a.count_ones() {
                 0..=1 => {}
                 2 => {
-                    let mut iter = BitMask(a);
+                    let mut iter = BitPositions(a);
                     let v = iter.next().unwrap();
                     let w = iter.next().unwrap();
                     let e = new_edges.entry((v as u8, w as u8)).or_insert((i as u8, 0));
@@ -529,7 +522,7 @@ impl Graph {
                 };
                 forest.pop();
                 component_masks[cv as usize] &= !mask;
-                for u in BitMask(mask) {
+                for u in BitPositions(mask) {
                     components[u] = cw;
                 }
                 i = j + 1;
@@ -548,7 +541,7 @@ impl Graph {
             let mask = component_masks[cw as usize];
             stack.push((i, cv, cw, mask));
             component_masks[cv as usize] |= mask;
-            for u in BitMask(mask) {
+            for u in BitPositions(mask) {
                 components[u] = cv;
             }
             forest.push((v, w));
@@ -570,7 +563,7 @@ impl Graph {
             match a.count_ones() {
                 1 => {}
                 2 => {
-                    let mut iter = BitMask(a);
+                    let mut iter = BitPositions(a);
                     let v = iter.next().unwrap();
                     let w = iter.next().unwrap();
                     new_edges.push((v as u8, w as u8));
@@ -615,23 +608,32 @@ pub fn permute_indexed_edges(edges: &[((u8, u8), u8)], perm: &[u8]) -> Vec<((u8,
         .collect()
 }
 
+/// Permute the bits of the mask using the provided permutation.
+pub fn permute_mask(mask: u64, perm: &[u8]) -> u64 {
+    let mut m = 0;
+    for i in BitPositions(mask).map(|j| perm[j as usize]) {
+        m |= 1 << i;
+    }
+    m
+}
+
 /// Remove the v-th bit of the mask, shifting the bits upper than v one place to the right.
-pub fn delete_vertex_from_mask(v: u8, mask: u64) -> u64 {
+pub fn delete_vertex_from_mask(mask: u64, v: u8) -> u64 {
     let m = (1 << v) - 1;
     (mask & m) | ((mask >> 1) & !m)
 }
 
-impl Iterator for BitMask {
+impl Iterator for BitPositions {
     type Item = usize;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let BitMask(mask) = *self;
+        let BitPositions(mask) = *self;
         if mask == 0 {
             return None;
         }
         let u = mask.trailing_zeros() as usize;
-        *self = BitMask(mask & (mask - 1));
+        *self = BitPositions(mask & (mask - 1));
         Some(u)
     }
 }
