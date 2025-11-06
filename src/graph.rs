@@ -14,6 +14,12 @@ pub struct Graph {
     pub adj: Vec<u64>, // adjacency matrix as bit-packed rows
 }
 
+#[derive(Clone, Debug)]
+pub struct ForestedGraph {
+    pub graph: Graph,
+    pub forest: Vec<u8>,
+}
+
 /// An iterator over the position of bits in a bitmask.
 #[derive(Clone, Copy)]
 pub struct BitPositions(pub u64);
@@ -61,6 +67,32 @@ pub fn sign(perm: &[u8]) -> i8 {
 /// Calculate the composition of two permutations.
 pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
     a.iter().map(|&x| b[x as usize]).collect()
+}
+
+impl ForestedGraph {
+    pub fn new(graph: Graph, forest: Vec<u8>) -> Self {
+        ForestedGraph {
+            graph,
+            forest,
+        }
+    }
+    pub fn contract_edge(&self, v: u8) -> ForestedGraph {
+        let mut g = self.graph.clone();
+        let mut f = self.forest.clone();
+        g.contract_binary_neighborhood(v);
+        let pos = f.iter().position(|&x| x == v);
+        if !pos.is_none() {
+            f.remove(pos.unwrap());
+            f.iter_mut().for_each(|x| if *x > v { *x -= 1 });
+        }
+        ForestedGraph::new(g,f)
+    }
+    pub fn forget_forest_edge(&self, v:u8) -> ForestedGraph {
+        let mut f = self.forest.clone();
+        let pos = f.iter().position(|&x| x == v);
+        f.remove(pos.unwrap());
+        ForestedGraph::new(self.graph.clone(),f)
+    }
 }
 
 impl Graph {
