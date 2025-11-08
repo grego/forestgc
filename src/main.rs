@@ -3,7 +3,6 @@ pub mod graph;
 use rayon::prelude::*;
 
 use graph::{BitPositions, Graph};
-use graph::{compose, inverse};
 
 use rand::Rng;
 use rand::seq::SliceRandom;
@@ -98,12 +97,7 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             // println!("Graph B: {} ", g2.to_g6());
 
             // let start = Instant::now();
-            let (can1, perms) = g.canonical_labels();
-            let perms: Vec<_> = perms
-                .iter()
-                .skip(1)
-                .map(|p| compose(&inverse(&perms[0]), p))
-                .collect();
+            let (can1, _, perms) = g.canonical_label();
             // let (can1, _) = g.canonical_label(g.initial_degree_classes());
             // println!("Canonical A: {} ", can1.to_g6());
             // let (can2, _) = g2.canonical_label();
@@ -161,17 +155,7 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
                     let (_, to_canon, perms) = contracted_graphs[i].get_or_insert_with(|| {
                         let mut g = can1.clone();
                         g.contract_binary_neighborhood(i as u8);
-                        let (can, perms) = g.canonical_labels();
-                        let base = perms[0].clone();
-                        (
-                            can,
-                            base,
-                            perms
-                                .iter()
-                                .skip(1)
-                                .map(|p| compose(&inverse(&perms[0]), p))
-                                .collect::<Vec<_>>(),
-                        )
+                        g.canonical_label()
                     });
                     let m = permute_mask(delete_vertex_from_mask(mask, i as u8), to_canon);
                     if let Some((f, s)) = canonical_subforest(m, perms) {

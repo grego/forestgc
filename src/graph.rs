@@ -196,24 +196,38 @@ impl Graph {
         result
     }
 
+    /// Return the graph in the canonical form, an isomorphism into it and a list of
+    /// non-trivial automorphisms of the canonical graph.
     #[inline(always)]
-    pub fn canonical_label(&self) -> (Graph, Vec<u8>) {
-        let (g, pp) = self.canonical_labels();
-        (g, pp[0].clone())
+    pub fn canonical_label(&self) -> (Graph, Vec<u8>, Vec<Vec<u8>>) {
+        let zero_colors = vec![0u128; self.num_vertices as usize];
+        self.canonical_label_col(&zero_colors)
     }
 
+    /// Return the graph in the canonical form, an isomorphism into it and a list of
+    /// non-trivial automorphisms of the canonical graph,
+    /// respecting the initial vertex coloring.
     #[inline(always)]
-    pub fn canonical_label_col(&self, init_colors: &[u128]) -> (Graph, Vec<u8>) {
-        let (g, pp) = self.canonical_labels_col(init_colors);
-        (g, pp[0].clone())
+    pub fn canonical_label_col(&self, init_colors: &[u128]) -> (Graph, Vec<u8>, Vec<Vec<u8>>) {
+        let (g, perms) = self.canonical_labels_col(init_colors);
+        let base = perms[0].clone();
+        let perms: Vec<_> = perms
+            .into_iter()
+            .skip(1)
+            .map(|p| compose(&inverse(&base), &p))
+            .collect();
+        (g, base, perms)
     }
 
+    /// Return the graph in the canonical form and a list of all isomorphisms into it.
     #[inline(always)]
     pub fn canonical_labels(&self) -> (Graph, Vec<Vec<u8>>) {
         let zero_colors = vec![0u128; self.num_vertices as usize];
         self.canonical_labels_col(&zero_colors)
     }
 
+    /// Return the graph in the canonical form and a list of all isomorphisms into it,
+    /// respecting the initial vertex coloring.
     pub fn canonical_labels_col(&self, init_colors: &[u128]) -> (Graph, Vec<Vec<u8>>) {
         let n = self.num_vertices as usize;
         let mut classes: Vec<u64> = vec![(1 << n) - 1]; // start with one big class
