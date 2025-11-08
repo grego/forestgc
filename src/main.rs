@@ -7,8 +7,8 @@ use graph::{compose, inverse};
 
 use rand::Rng;
 use rand::seq::SliceRandom;
-use rustc_hash::FxHashSet;
-use std::io::{BufRead, BufReader, Read};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::io::{BufRead, BufReader};
 // use std::collections::HashSet;
 use std::fs::{self, File};
 use std::sync::atomic::AtomicUsize;
@@ -27,6 +27,7 @@ fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
 /// If it has an odd automorphism, return None.
 /// Otherwise, return a touple `(forest, sign)` where `forest` is its representing
 /// class and `sign` its sign.
+#[inline]
 fn canonical_subforest(mask: u64, perms: &[Vec<u8>]) -> Option<(u64, i8)> {
     let mut cm = mask;
     let mut sign = 1;
@@ -34,13 +35,25 @@ fn canonical_subforest(mask: u64, perms: &[Vec<u8>]) -> Option<(u64, i8)> {
         let m = permute_mask(mask, perm);
         if m == mask && sign_subset(perm, BitPositions(mask)) == -1 {
             return None;
-        }
-        if m < cm {
+        } else if m < cm {
             cm = m;
             sign = sign_subset(perm, BitPositions(mask));
         }
     }
     Some((cm, sign))
+}
+
+/// Add the value to the `(key, value)` list,
+/// or push a new one if not already present.
+#[inline]
+fn add_or_push<T: Eq>(l: &mut Vec<(T, i8)>, k: T, v: i8) {
+    for (kk, vv) in l.iter_mut() {
+        if *kk == k {
+            *vv += v;
+            return;
+        }
+    }
+    l.push((k, v));
 }
 
 fn test_canonical_label_file(filename: &str, max_ntests: usize) {
@@ -64,11 +77,11 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     // let mut forest_edges = Vec::with_capacity(3439906022);
     let sf_num = AtomicUsize::new(0);
 
-    graphs
+    let res: Vec<_> = graphs
         .par_iter()
         .enumerate()
         .take(n_tests)
-        .for_each(|(i, g)| {
+        .map(|(i, g)| {
             // let g = Graph::from_g6("GAl??G");
             // println!("Graph A: {} ", g.to_g6());
             // let perm = random_permutation(&mut rng, n);
@@ -123,7 +136,7 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             }
 
             let mut smaller_forests = FxHashSet::default();
-            let mut rrows = Vec::new();
+            let mut rcols = Vec::new();
             for &mask in &forested_graphs {
                 let mut dr = Vec::new();
                 let mut sign = 1;
@@ -131,26 +144,27 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
                     let m = mask & !(1 << i);
                     if let Some((f, s)) = canonical_subforest(m, &perms) {
                         smaller_forests.insert(f);
-                        dr.push((f, s * sign));
+                        add_or_push(&mut dr, f, s * sign);
                     }
                     sign *= -1;
                 }
-                rrows.push((mask, dr));
+                rcols.push((mask, dr));
             }
 
             let mut contracted_graphs = vec![None; can1.num_vertices as usize];
             let mut contracted_forests = vec![FxHashSet::default(); can1.num_vertices as usize];
-            let mut crows = Vec::new();
+            let mut ccols = Vec::new();
             for &mask in &forested_graphs {
                 let mut dr = Vec::new();
                 let mut sign = 1;
                 for i in BitPositions(mask) {
-                    let (to_canon, perms) = contracted_graphs[i].get_or_insert_with(|| {
+                    let (_, to_canon, perms) = contracted_graphs[i].get_or_insert_with(|| {
                         let mut g = can1.clone();
                         g.contract_binary_neighborhood(i as u8);
-                        let (_, perms) = g.canonical_labels();
+                        let (can, perms) = g.canonical_labels();
                         let base = perms[0].clone();
                         (
+                            can,
                             base,
                             perms
                                 .iter()
@@ -160,13 +174,13 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
                         )
                     });
                     let m = permute_mask(delete_vertex_from_mask(mask, i as u8), to_canon);
-                    if let Some((f, s)) = canonical_subforest(m, &perms) {
+                    if let Some((f, s)) = canonical_subforest(m, perms) {
                         contracted_forests[i].insert(f);
-                        dr.push((f, s * sign));
+                        add_or_push(&mut dr, (i, f), s * sign);
                     }
                     sign *= -1;
                 }
-                crows.push((mask, dr));
+                ccols.push((mask, dr));
             }
 
             // let mut smaller_forests: Vec<_> = smaller_forests.drain().collect();
@@ -188,7 +202,35 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
             //     can1.to_multigraph().to_dot(),
             // );
             sf_num.fetch_add(forested_graphs.len(), std::sync::atomic::Ordering::Relaxed);
-        });
+
+            (
+                forested_graphs,
+                smaller_forests,
+                rcols,
+                contracted_graphs,
+                contracted_forests,
+                ccols,
+            )
+        })
+        .collect();
+
+    let mut contracted_graphs = FxHashMap::default();
+    for (_, _, _, cgs, cfs, _) in &res {
+        let g6s: Vec<_> = cgs
+            .par_iter()
+            .map(|x| x.as_ref().map(|(g, _, _)| g.to_g6()))
+            .collect();
+        for (g, fs) in cfs
+            .iter()
+            .zip(g6s.iter())
+            .filter_map(|(fs, g)| g.as_ref().map(|g| (g, fs)))
+        {
+            let cg: &mut FxHashSet<_> = contracted_graphs.entry(g.clone()).or_default();
+            for i in fs {
+                cg.insert(i);
+            }
+        }
+    }
 
     let total_time = start_total.elapsed();
     println!("---");

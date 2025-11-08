@@ -1,10 +1,8 @@
-mod graph;
-
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, stdin};
 
-use graph::Graph;
+use graphc::graph::Graph;
 
 fn main() {
     let mut args = env::args().skip(1);

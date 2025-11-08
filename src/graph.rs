@@ -71,27 +71,28 @@ pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
 
 impl ForestedGraph {
     pub fn new(graph: Graph, forest: Vec<u8>) -> Self {
-        ForestedGraph {
-            graph,
-            forest,
-        }
+        ForestedGraph { graph, forest }
     }
     pub fn contract_edge(&self, v: u8) -> ForestedGraph {
         let mut g = self.graph.clone();
         let mut f = self.forest.clone();
         g.contract_binary_neighborhood(v);
         let pos = f.iter().position(|&x| x == v);
-        if !pos.is_none() {
-            f.remove(pos.unwrap());
-            f.iter_mut().for_each(|x| if *x > v { *x -= 1 });
+        if let Some(p) = pos {
+            f.remove(p);
+            f.iter_mut().for_each(|x| {
+                if *x > v {
+                    *x -= 1
+                }
+            });
         }
-        ForestedGraph::new(g,f)
+        ForestedGraph::new(g, f)
     }
-    pub fn forget_forest_edge(&self, v:u8) -> ForestedGraph {
+    pub fn forget_forest_edge(&self, v: u8) -> ForestedGraph {
         let mut f = self.forest.clone();
         let pos = f.iter().position(|&x| x == v);
         f.remove(pos.unwrap());
-        ForestedGraph::new(self.graph.clone(),f)
+        ForestedGraph::new(self.graph.clone(), f)
     }
 }
 
@@ -643,7 +644,7 @@ pub fn permute_indexed_edges(edges: &[((u8, u8), u8)], perm: &[u8]) -> Vec<((u8,
 /// Permute the bits of the mask using the provided permutation.
 pub fn permute_mask(mask: u64, perm: &[u8]) -> u64 {
     let mut m = 0;
-    for i in BitPositions(mask).map(|j| perm[j as usize]) {
+    for i in BitPositions(mask).map(|j| perm[j]) {
         m |= 1 << i;
     }
     m

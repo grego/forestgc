@@ -52,6 +52,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphc"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "rayon",
+ "rustc-hash",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.176"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -140,12 +149,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_canonl"
-version = "0.1.0"
-dependencies = [
- "rand",
- "rayon",
-]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "syn"
