@@ -267,6 +267,22 @@ impl Graph {
         let gcanon = self.permute(&perms[0]);
         (gcanon, perms)
     }
+    /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
+    pub fn contains_loop(&self) -> bool {
+        for (v1, v2) in self.edges.iter() {
+            if v1 == v2 {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns wheter a graph is isomorphic to the given graph
+    pub fn is_isomorphic_to(&self, graph: &Graph) -> bool {
+        let a: Graph = self.canonical_label().0;
+        let b: Graph = graph.canonical_label().0;
+        return a.adj == b.adj;
+    }
 
     #[inline(always)]
     pub fn automorphisms(&self) -> Vec<Vec<u8>> {
@@ -491,12 +507,32 @@ impl Graph {
         }
     }
 
+    /// Contracts the given edge, expects to be called on simple graphs!
+    /// Crashed if the edge is not present in the graph!
+    pub fn contract_edge(&self, edge: Edge) -> Graph {
+        assert!(
+            self.edges.contains(&edge),
+            "Graph does not contain the edge"
+        );
+
+        let (u, w) = (edge.0.min(edge.1), edge.0.max(edge.1));
+        let f = |a| if a == w { u } else { a - (a > w) as u8 };
+        let edges = self
+            .edges
+            .iter()
+            .filter(|&&e| e != (u, w) && e != (w, u))
+            .map(|&(a, b)| (f(a), f(b)))
+            .collect();
+
+        return Graph::new(self.num_vertices - 1, edges);
+    }
+
     /// Contract the neigborhood of a binary vertex.
-    pub fn contract_binary_neighborhood(&mut self, mut v: u8) {
-        self.num_vertices -= 1;
+    pub fn contract_binary_neighborhood(&mut self, v: u8) {
+        self.num_vertices -= 2;
         let mut iter = BitPositions(self.adj[v as usize]);
         let u = iter.next().unwrap() as u8;
-        let mut w = iter.next().unwrap() as u8;
+        let w = iter.next().unwrap() as u8;
         let f = |a| match a {
             a if a == v => None,
             a if a == w => Some(u),
@@ -507,12 +543,13 @@ impl Graph {
             .into_iter()
             .filter_map(|(a, b)| Some((f(a)?, f(b)?)))
             .collect();
-        if v > w {
-            mem::swap(&mut v, &mut w);
-        }
+        self.adj[u as usize] |= self.adj[w as usize];
+        self.adj.remove(v.min(w) as usize);
+        self.adj.remove(v.max(w) as usize - 1);
         for a in self.adj.iter_mut() {
-            *a = delete_vertex_from_mask(*a, v);
-            *a = delete_vertex_from_mask(*a, w - 1);
+            *a |= (*a & (1 << w)) >> (w - u);
+            *a = delete_vertex_from_mask(*a, v.min(w));
+            *a = delete_vertex_from_mask(*a, v.max(w) - 1);
         }
     }
 
@@ -548,6 +585,21 @@ impl Graph {
             Graph::new(new_v, perm_edges.iter().cloned().map(|(e, _)| e).collect()),
             perm_edges,
         )
+    }
+
+    /// Returns the given graph in the form of a bipartite graph,
+    /// where the second color vertices represent edges
+    pub fn to_bipartite(&self) -> Graph {
+        let mut i: u8 = 0;
+        let mut edges = Vec::new();
+        for (v1, v2) in self.edges.iter() {
+            let e1: Edge = (*v1, self.num_vertices + i);
+            let e2: Edge = (*v2, self.num_vertices + i);
+            edges.push(e1);
+            edges.push(e2);
+            i += 1;
+        }
+        return Graph::new(self.num_vertices + i, edges);
     }
 
     pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<Edge>> {
