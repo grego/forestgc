@@ -10,7 +10,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
 use crate::graph::{compose, permute_mask, sign_subset};
@@ -64,14 +63,7 @@ fn compute_matrices(filename: &str, forest_size: usize) {
         .collect::<Vec<Graph>>();
     let n_graphs = graphs.len();
     println!("Loaded {} graphs from file {}", n_graphs, filename);
-    // let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
-    // let mismatches = 0;
     let start_total = Instant::now();
-    let with_autos = AtomicUsize::new(0);
-
-    // let mut unique_forests = Mutex::new(HashSet::new());
-    // let mut forest_edges = Vec::with_capacity(3439906022);
-    let sf_num = AtomicUsize::new(0);
 
     let res: Vec<_> = graphs
         .iter()
@@ -80,7 +72,7 @@ fn compute_matrices(filename: &str, forest_size: usize) {
         .map(|(_i, g)| {
             let (can, _, perms) = g.canonical_label();
 
-            let (gs, dict) = can.simplify(true);
+            let (gs, dict) = can.simplify(false);
             let subforests = gs.subforests(forest_size, forest_size);
             let mut forested_graphs = FxHashSet::default();
             for subf in subforests {
@@ -152,7 +144,6 @@ fn compute_matrices(filename: &str, forest_size: usize) {
             //     format!("graphs/g{i}_multi.dot"),
             //     can1.to_multigraph().to_dot(),
             // );
-            sf_num.fetch_add(forested_graphs.len(), std::sync::atomic::Ordering::Relaxed);
 
             (
                 forested_graphs,
@@ -165,6 +156,19 @@ fn compute_matrices(filename: &str, forest_size: usize) {
         })
         .collect();
 
+    let mut row_indices = vec![0; n_graphs];
+    let mut rcol_indices = vec![0; n_graphs];
+    let (mut sum, mut rsum) = (0, 0);
+    for (i, (fgs, rfgs, _, _, _, _)) in res.iter().enumerate() {
+        sum += fgs.len();
+        rsum += rfgs.len();
+        if i + 1 < n_graphs {
+            row_indices[i + 1] = sum;
+            rcol_indices[i + 1] = rsum;
+        }
+    }
+
+    let mut contracted_num = 0;
     let mut contracted_graphs = FxHashMap::default();
     for (_, _, _, cgs, cfs, _) in &res {
         let g6s: Vec<_> = cgs
@@ -176,11 +180,19 @@ fn compute_matrices(filename: &str, forest_size: usize) {
             .zip(g6s.iter())
             .filter_map(|(fs, g)| g.as_ref().map(|g| (g, fs)))
         {
-            let cg: &mut FxHashSet<_> = contracted_graphs.entry(g.clone()).or_default();
+            let (_, cg) = contracted_graphs.entry(g.clone()).or_insert_with(|| {
+                contracted_num += 1;
+                (contracted_num - 1, FxHashSet::default())
+            });
             for i in fs {
                 cg.insert(i);
             }
         }
+    }
+
+    let mut ccol_indices = vec![0; contracted_num];
+    for (i, cg) in contracted_graphs.values() {
+        ccol_indices[*i] = cg.len();
     }
 
     let total_time = start_total.elapsed();
@@ -192,11 +204,13 @@ fn compute_matrices(filename: &str, forest_size: usize) {
         "Avg per graph: {:.3} ms",
         total_time.as_secs_f64() * 1e3 / n_graphs as f64
     );
+    println!("Pairs graph + subforest up to iso: {}", sum);
+    println!("du differential rows: {}", rsum);
     println!(
-        "Graphs with nontrivial automorphisms: {}",
-        with_autos.into_inner()
+        "dc differential rows: {}",
+        ccol_indices.iter().copied().sum::<usize>()
     );
-    println!("Pairs graph + subforest up to iso: {}", sf_num.into_inner());
+    println!("Number of contracted graphs: {}", contracted_num);
 }
 
 fn main() {
