@@ -7,13 +7,13 @@ use graph::{BitPositions, Graph};
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::env;
+use std::fs::File;
 use std::io::{BufRead, BufReader};
-// use std::collections::HashSet;
-use std::fs::{self, File};
 use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
-use crate::graph::{delete_vertex_from_mask, permute_mask, sign_subset};
+use crate::graph::{compose, permute_mask, sign_subset};
 
 #[allow(dead_code)]
 fn random_permutation<R: Rng>(rng: &mut R, n: u8) -> Vec<u8> {
@@ -55,18 +55,15 @@ fn add_or_push<T: Eq>(l: &mut Vec<(T, i8)>, k: T, v: i8) {
     l.push((k, v));
 }
 
-fn test_canonical_label_file(filename: &str, max_ntests: usize) {
+fn compute_matrices(filename: &str, forest_size: usize) {
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let graphs = reader
         .lines()
         .map(|g6| Graph::from_g6(&g6.unwrap()))
         .collect::<Vec<Graph>>();
-    let mut n_tests = graphs.len();
-    println!("Loaded {} graphs from file {}", n_tests, filename);
-    if max_ntests > 0 && n_tests > max_ntests {
-        n_tests = max_ntests;
-    }
+    let n_graphs = graphs.len();
+    println!("Loaded {} graphs from file {}", n_graphs, filename);
     // let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
     // let mismatches = 0;
     let start_total = Instant::now();
@@ -77,44 +74,14 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
     let sf_num = AtomicUsize::new(0);
 
     let res: Vec<_> = graphs
-        .par_iter()
+        .iter()
         .enumerate()
-        .take(n_tests)
-        .map(|(i, g)| {
-            // let g = Graph::from_g6("GAl??G");
-            // println!("Graph A: {} ", g.to_g6());
-            // let perm = random_permutation(&mut rng, n);
-            // let g2 = g.permute(&perm);
-            // let autos = g.automorphisms();
-            // if autos.len() > 1 {
-            //     // print!("{}", autos.len());
-            //     with_autos.fetch_add(autos.len(), std::sync::atomic::Ordering::Relaxed);
-            //     // if autos.len() > 2 {
-            //     //     println!("{} automorphisms", autos.len());
-            //     // }
-            // }
-            // let g2 = Graph::from_g6("GSWOO?");
-            // println!("Graph B: {} ", g2.to_g6());
+        .take(n_graphs)
+        .map(|(_i, g)| {
+            let (can, _, perms) = g.canonical_label();
 
-            // let start = Instant::now();
-            let (can1, _, perms) = g.canonical_label();
-            // let (can1, _) = g.canonical_label(g.initial_degree_classes());
-            // println!("Canonical A: {} ", can1.to_g6());
-            // let (can2, _) = g2.canonical_label();
-            // let (can2, _) = g2.canonical_label(g2.initial_degree_classes());
-            // let duration = start.elapsed();
-            // println!("Duration: {:?} ms", duration.as_secs_f64() * 1e3);
-            // println!("Canonical B: {} ", can2.to_g6());
-
-            // println!("All: \n{}\n{}\n{}\n{}", g.to_g6(), g2.to_g6(), can1.to_g6(), can2.to_g6());
-
-            // if can1.edges != can2.edges {
-            //     mismatches += 1;
-            //     println!("❌ Mismatch at test {i}");
-            // }
-
-            let (gs, dict) = can1.simplify(true);
-            let subforests = gs.subforests(8, 8);
+            let (gs, dict) = can.simplify(true);
+            let subforests = gs.subforests(forest_size, forest_size);
             let mut forested_graphs = FxHashSet::default();
             for subf in subforests {
                 let mut mask = 0_u64;
@@ -145,19 +112,19 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
                 rcols.push((mask, dr));
             }
 
-            let mut contracted_graphs = vec![None; can1.num_vertices as usize];
-            let mut contracted_forests = vec![FxHashSet::default(); can1.num_vertices as usize];
+            let mut contracted_graphs = vec![None; can.num_vertices as usize];
+            let mut contracted_forests = vec![FxHashSet::default(); can.num_vertices as usize];
             let mut ccols = Vec::new();
             for &mask in &forested_graphs {
                 let mut dr = Vec::new();
                 let mut sign = 1;
                 for i in BitPositions(mask) {
                     let (_, to_canon, perms) = contracted_graphs[i].get_or_insert_with(|| {
-                        let mut g = can1.clone();
-                        g.contract_binary_neighborhood(i as u8);
-                        g.canonical_label()
+                        let (g, m) = can.contract_neighborhood(i as u8);
+                        let (g, base, perms) = g.canonical_label();
+                        (g, compose(&m, &base), perms)
                     });
-                    let m = permute_mask(delete_vertex_from_mask(mask, i as u8), to_canon);
+                    let m = permute_mask(mask & !(1 << i), to_canon);
                     if let Some((f, s)) = canonical_subforest(m, perms) {
                         contracted_forests[i].insert(f);
                         add_or_push(&mut dr, (i, f), s * sign);
@@ -218,12 +185,12 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
 
     let total_time = start_total.elapsed();
     println!("---");
-    println!("Number of graphs: {}", n_tests);
+    println!("Number of graphs: {}", n_graphs);
     // println!("Mismatches: {}", mismatches);
     println!("Total time: {:.3} s", total_time.as_secs_f64());
     println!(
         "Avg per graph: {:.3} ms",
-        total_time.as_secs_f64() * 1e3 / n_tests as f64
+        total_time.as_secs_f64() * 1e3 / n_graphs as f64
     );
     println!(
         "Graphs with nontrivial automorphisms: {}",
@@ -233,6 +200,11 @@ fn test_canonical_label_file(filename: &str, max_ntests: usize) {
 }
 
 fn main() {
-    fs::create_dir_all("graphs").unwrap();
-    test_canonical_label_file("graphs.g6", 1_000_000);
+    let mut args = env::args().skip(1);
+    let Some(graphfile) = args.next() else {
+        eprintln!("no .g6 file provided; exiting");
+        return;
+    };
+    let num_forests: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(3);
+    compute_matrices(&graphfile, num_forests);
 }

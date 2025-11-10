@@ -64,36 +64,10 @@ pub fn sign(perm: &[u8]) -> i8 {
     sign_subset(perm, 1..perm.len())
 }
 
-/// Calculate the composition of two permutations.
+/// Calculate the composition of two permutations, in natural order.
+/// `i |-> b(a(i))`
 pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
     a.iter().map(|&x| b[x as usize]).collect()
-}
-
-impl ForestedGraph {
-    pub fn new(graph: Graph, forest: Vec<u8>) -> Self {
-        ForestedGraph { graph, forest }
-    }
-    pub fn contract_edge(&self, v: u8) -> ForestedGraph {
-        let mut g = self.graph.clone();
-        let mut f = self.forest.clone();
-        g.contract_binary_neighborhood(v);
-        let pos = f.iter().position(|&x| x == v);
-        if !pos.is_none() {
-            f.remove(pos.unwrap());
-            f.iter_mut().for_each(|x| {
-                if *x > v {
-                    *x -= 1
-                }
-            });
-        }
-        ForestedGraph::new(g, f)
-    }
-    pub fn forget_forest_edge(&self, v: u8) -> ForestedGraph {
-        let mut f = self.forest.clone();
-        let pos = f.iter().position(|&x| x == v);
-        f.remove(pos.unwrap());
-        ForestedGraph::new(self.graph.clone(), f)
-    }
 }
 
 impl Graph {
@@ -274,14 +248,14 @@ impl Graph {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     /// Returns wheter a graph is isomorphic to the given graph
     pub fn is_isomorphic_to(&self, graph: &Graph) -> bool {
         let a: Graph = self.canonical_label().0;
         let b: Graph = graph.canonical_label().0;
-        return a.adj == b.adj;
+        a.adj == b.adj
     }
 
     #[inline(always)]
@@ -524,33 +498,30 @@ impl Graph {
             .map(|&(a, b)| (f(a), f(b)))
             .collect();
 
-        return Graph::new(self.num_vertices - 1, edges);
+        Graph::new(self.num_vertices - 1, edges)
     }
 
-    /// Contract the neigborhood of a binary vertex.
-    pub fn contract_binary_neighborhood(&mut self, v: u8) {
-        self.num_vertices -= 2;
-        let mut iter = BitPositions(self.adj[v as usize]);
-        let u = iter.next().unwrap() as u8;
-        let w = iter.next().unwrap() as u8;
-        let f = |a| match a {
-            a if a == v => None,
-            a if a == w => Some(u),
-            _ => Some(a - (a > v) as u8 - (a > w) as u8),
-        };
-        let edges = mem::take(&mut self.edges);
-        self.edges = edges
-            .into_iter()
-            .filter_map(|(a, b)| Some((f(a)?, f(b)?)))
-            .collect();
-        self.adj[u as usize] |= self.adj[w as usize];
-        self.adj.remove(v.min(w) as usize);
-        self.adj.remove(v.max(w) as usize - 1);
-        for a in self.adj.iter_mut() {
-            *a |= (*a & (1 << w)) >> (w - u);
-            *a = delete_vertex_from_mask(*a, v.min(w));
-            *a = delete_vertex_from_mask(*a, v.max(w) - 1);
+    /// Contract the neigborhood of a vertex.
+    /// Returns the contracted graph, along with the map from old vertices to new ones.
+    pub fn contract_neighborhood(&self, v: u8) -> (Self, Vec<u8>) {
+        let mut morphism: Vec<_> = (0..self.num_vertices).collect();
+        let neigh = self.adj[v as usize] | (1 << v);
+        let size = neigh.count_ones() as u8;
+        let mut iter = BitPositions(neigh);
+        let min = iter.next().unwrap_or(v as usize) as u8;
+        for u in iter {
+            morphism[u] = min;
+            for i in u + 1..self.num_vertices as usize {
+                morphism[i] -= 1;
+            }
         }
+        let f = |a| Some(morphism[a as usize]).filter(|_| a != v);
+        let edges = self
+            .edges
+            .iter()
+            .filter_map(|&(a, b)| Some((f(a)?, f(b)?)))
+            .collect();
+        (Graph::new(self.num_vertices - size + 1, edges), morphism)
     }
 
     /// Turn valency 2 vertices into new edges.
@@ -599,7 +570,7 @@ impl Graph {
             edges.push(e2);
             i += 1;
         }
-        return Graph::new(self.num_vertices + i, edges);
+        Graph::new(self.num_vertices + i, edges)
     }
 
     pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<Edge>> {
@@ -710,7 +681,7 @@ pub fn permute_indexed_edges(edges: &[((u8, u8), u8)], perm: &[u8]) -> Vec<((u8,
 /// Permute the bits of the mask using the provided permutation.
 pub fn permute_mask(mask: u64, perm: &[u8]) -> u64 {
     let mut m = 0;
-    for i in BitPositions(mask).map(|j| perm[j as usize]) {
+    for i in BitPositions(mask).map(|j| perm[j]) {
         m |= 1 << i;
     }
     m

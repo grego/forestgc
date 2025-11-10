@@ -182,21 +182,19 @@ fn test_contract_edge_benzen_rank4() {
     assert!(contractedbenzen.is_isomorphic_to(&gg));
 }
 
-// contract_binary_neighbourhood function
+// contract_neighborhood function
 
 #[test]
 fn test_contract_binary_neighborhood_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
     let contrpetersen: Graph = petersen.contract_edge((5, 9));
     let contrpetersenbipart: Graph = contrpetersen.to_bipartite();
-    let mut petersenbipart: Graph = petersen.to_bipartite();
-    petersenbipart.contract_binary_neighborhood(10);
+    let petersenbipart: Graph = petersen.to_bipartite().contract_neighborhood(10).0;
 
     for ed in PETERSEN_EDGES {
         let gg: Graph = petersen.contract_edge(*ed).to_bipartite();
         for i in 10..24 {
-            let mut g: Graph = petersen.to_bipartite();
-            g.contract_binary_neighborhood(i);
+            let g: Graph = petersen.to_bipartite().contract_neighborhood(i).0;
             // let g1 = g.edges.clone().sort_unstable();
             // let g2 = gg.edges.clone().sort_unstable();
             //  assert!(g1 != g2);
@@ -211,12 +209,11 @@ fn test_contract_binary_neighborhood_petersen() {
 }
 
 #[test]
-fn test_contract_binary_neighborhood_morita_rank4() {
+fn test_contract_neighborhood_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into());
     let contrmorita: Graph = morita.contract_edge((2, 3));
     let contrmoritabipart: Graph = contrmorita.to_bipartite();
-    let mut moritabipart: Graph = morita.to_bipartite();
-    moritabipart.contract_binary_neighborhood(10);
+    let moritabipart: Graph = morita.to_bipartite().contract_neighborhood(10).0;
 
     //  assert_eq!(moritabipart.edges, contrmoritabipart.edges);
     // assert_eq!(moritabipart.adj, contrmoritabipart.adj);
@@ -225,12 +222,11 @@ fn test_contract_binary_neighborhood_morita_rank4() {
 }
 
 #[test]
-fn test_contract_binary_neighborhood_benzen_rank4() {
+fn test_contract_neighborhood_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into());
     let contrbenzen: Graph = benzen.contract_edge((2, 3));
     let contrbenzenbipart: Graph = contrbenzen.to_bipartite();
-    let mut benzenbipart: Graph = benzen.to_bipartite();
-    benzenbipart.contract_binary_neighborhood(10);
+    let benzenbipart: Graph = benzen.to_bipartite().contract_neighborhood(10).0;
 
     assert_eq!(benzenbipart.edges, contrbenzenbipart.edges);
     assert_eq!(benzenbipart.adj, contrbenzenbipart.adj);
