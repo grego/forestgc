@@ -227,26 +227,28 @@ fn test_contract_neighborhood_benzen_rank4() {
     assert!(benzenbipart.is_isomorphic_to(&contrbenzenbipart));
 }
 
+// count_double_edges function
+
 #[test]
-fn test_is_multigraph_petersen() {
+fn test_count_double_edges_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
-    assert!(!petersen.is_multigraph());
+    assert_eq!(petersen.count_double_edges(), 0);
 }
 
 #[test]
-fn test_is_multigraph_morita_rank4() {
+fn test_count_double_edges_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
-    assert!(!morita.is_multigraph());
+    assert_eq!(morita.count_double_edges(), 0);
 }
 
 #[test]
-fn test_is_multigraph_benzen_rank4() {
+fn test_count_double_edges_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
-    assert!(benzen.is_multigraph());
+    assert_eq!(benzen.count_double_edges(), 3);
 }
 
-#[test]
-fn test_is_multigraph1() {
+//#[test]
+fn test_count_double_edges_rank7() {
     let path = "graphs/v12_e18.g6";
 
     let file = File::open(path).unwrap();
@@ -259,18 +261,21 @@ fn test_is_multigraph1() {
 
     assert_eq!(n_graphs, 365);
 
-    let mut i = 0;
+    let expectedsplit = [
+        81, 105, 101, 53, 20, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
     for g in graphs.iter() {
-        if g.is_multigraph() {
-            i += 1;
-        }
+        split[g.count_double_edges() as usize] += 1;
     }
 
-    assert_eq!(i, 284);
+    assert_eq!(split, expectedsplit);
 }
 
-#[test]
-fn test_is_multigraph2() {
+//#[test]
+fn test_count_double_edges_rank8() {
     let path = "graphs/v14_e21.g6";
 
     let file = File::open(path).unwrap();
@@ -283,12 +288,69 @@ fn test_is_multigraph2() {
 
     assert_eq!(n_graphs, 2602);
 
-    let mut i = 0;
+    let expectedsplit = [
+        480, 777, 744, 406, 152, 36, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
     for g in graphs.iter() {
-        if g.is_multigraph() {
-            i += 1;
-        }
+        split[g.count_double_edges() as usize] += 1;
     }
 
-    assert_eq!(i, 2122);
+    assert_eq!(split, expectedsplit);
+}
+
+//#[test]
+fn test_count_double_edges_rank9() {
+    let path = "graphs/v16_e24.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 23811);
+
+    let expectedsplit = [
+        3874, 7152, 6904, 3918, 1508, 379, 68, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    for g in graphs.iter() {
+        split[g.count_double_edges() as usize] += 1;
+    }
+
+    assert_eq!(split, expectedsplit);
+}
+
+//#[test]
+fn test_count_double_edges_rank10() {
+    let path = "graphs/v18_e27.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 264993);
+
+    let expectedsplit = [
+        39866, 79284, 77080, 45125, 17829, 4794, 896, 109, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    for g in graphs.iter() {
+        split[g.count_double_edges() as usize] += 1;
+    }
+
+    assert_eq!(split, expectedsplit);
 }
