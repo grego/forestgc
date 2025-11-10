@@ -292,3 +292,21 @@ fn test_is_multigraph2() {
 
     assert_eq!(i, 2122);
 }
+
+#[test]
+fn test_connected_components() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert_eq!(petersen.connected_components().0, 1);
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(morita.connected_components().0, 1);
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(benzen.connected_components().0, 1);
+
+    let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
+    let g = Graph::new(8, edges);
+    assert_eq!(g.connected_components().0, 4);
+
+    let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
+    let g = BigGraph::new(8, edges);
+    assert_eq!(g.connected_components().0, 4);
+}

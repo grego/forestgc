@@ -15,6 +15,12 @@ pub struct Graph {
     pub adj: Vec<u64>, // adjacency matrix as bit-packed rows
 }
 
+#[derive(Clone, Debug)]
+pub struct BigGraph {
+    pub num_vertices: usize,
+    pub edges: Vec<(usize, usize)>,
+}
+
 /// An iterator over the position of bits in a bitmask.
 #[derive(Clone, Copy)]
 pub struct BitPositions(pub u64);
@@ -668,6 +674,62 @@ impl Graph {
         }
         s.push('}');
         s
+    }
+
+    /// Compute the number of connected components of a graph, along with an assignment
+    /// of connected components to vertices.
+    pub fn connected_components(&self) -> (u8, Vec<u8>) {
+        let mut components = vec![0; self.num_vertices as usize];
+        let mut stack = Vec::new();
+        let mut i: u8 = 0;
+        while let Some(u) = components.iter().position(|&e| e == 0) {
+            i += 1;
+            components[u] = i;
+            stack.push(u);
+            while let Some(v) = stack.pop() {
+                for w in BitPositions(self.adj[v]) {
+                    if components[w] == 0 {
+                        components[w] = i;
+                        stack.push(w);
+                    }
+                }
+            }
+        }
+        (i, components)
+    }
+}
+
+impl BigGraph {
+    pub fn new(num_vertices: usize, edges: Vec<(usize, usize)>) -> Self {
+        let mut edges: Vec<_> = edges.iter().map(|&(a, b)| (a.min(b), a.max(b))).collect();
+        edges.sort_unstable();
+        BigGraph {
+            num_vertices,
+            edges,
+        }
+    }
+
+    /// Compute the number of connected components of a graph, along with an assignment
+    /// of connected components to vertices.
+    pub fn connected_components(&self) -> (usize, Vec<usize>) {
+        let mut components = vec![0; self.num_vertices];
+        let mut stack = Vec::new();
+        let mut i = 0;
+        while let Some(u) = components.iter().position(|&e| e == 0) {
+            i += 1;
+            components[u] = i;
+            stack.push(u);
+            while let Some(v) = stack.pop() {
+                for e in self.edges.iter().filter(|&&(u, w)| u == v || w == v) {
+                    let w = if e.0 == v { e.1 } else { e.0 };
+                    if components[w] == 0 {
+                        components[w] = i;
+                        stack.push(w);
+                    }
+                }
+            }
+        }
+        (i, components)
     }
 }
 
