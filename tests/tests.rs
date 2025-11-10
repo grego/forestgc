@@ -302,6 +302,30 @@ fn test_count_double_edges_rank8() {
 }
 
 //#[test]
+fn test_3edge_connected_rank8() {
+    let path = "graphs/v14_e21.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 2602);
+
+    let mut i = 0;
+    for g in graphs.iter() {
+        if g.is_3edge_connected() {
+            i += 1;
+        }
+    }
+
+    assert_eq!(i, 341);
+}
+
+//#[test]
 fn test_count_double_edges_rank9() {
     let path = "graphs/v16_e24.g6";
 
@@ -326,6 +350,30 @@ fn test_count_double_edges_rank9() {
     }
 
     assert_eq!(split, expectedsplit);
+}
+
+//#[test]
+fn test_3edge_connected_rank9() {
+    let path = "graphs/v16_e24.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 23811);
+
+    let mut i = 0;
+    for g in graphs.iter() {
+        if g.is_3edge_connected() {
+            i += 1;
+        }
+    }
+
+    assert_eq!(i, 2828);
 }
 
 //#[test]
@@ -355,6 +403,48 @@ fn test_count_double_edges_rank10() {
     assert_eq!(split, expectedsplit);
 }
 
+//#[test]
+fn test_3edge_connected_rank10() {
+    let path = "graphs/v18_e27.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 264993);
+
+    let mut i = 0;
+    for g in graphs.iter() {
+        if g.is_3edge_connected() {
+            i += 1;
+        }
+    }
+
+    assert_eq!(i, 30468);
+}
+
+#[test]
+fn test_edges_valency2_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert_eq!(petersen.edges_valency_2().len(), 15);
+}
+
+#[test]
+fn test_edges_valency2_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(morita.edges_valency_2().len(), 9);
+}
+
+#[test]
+fn test_edges_valency2_benzen_rank4() {
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(benzen.edges_valency_2().len(), 9);
+}
+
 #[test]
 fn test_connected_components() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
@@ -371,4 +461,22 @@ fn test_connected_components() {
     let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
     let g = BigGraph::new(8, edges);
     assert_eq!(g.connected_components().0, 4);
+}
+
+#[test]
+fn test_is_3edge_connected_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert!(petersen.is_3edge_connected());
+}
+
+#[test]
+fn test_is_3edge_connected_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert!(morita.is_3edge_connected());
+}
+
+#[test]
+fn test_is_3edge_connected_benzen_rank4() {
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert!(!benzen.is_3edge_connected());
 }

@@ -466,26 +466,43 @@ impl Graph {
         self.adj.push(1 << v);
     }
 
-    /// Delete the vertex with the given index.
-    pub fn delete_vertex(&mut self, v: u8) {
-        self.num_vertices -= 1;
+    /// Removes the given vertex
+    pub fn remove_vertex(&self, v: u8) -> Graph {
+        let num_vertices = self.num_vertices - 1;
         let dec = |w| if w < v { w } else { w - 1 };
-        let edges = mem::take(&mut self.edges);
-        self.edges = edges
-            .into_iter()
-            .filter(|(u, w)| *u == v || *w == v)
-            .map(|(u, w)| (dec(u), dec(w)))
+        let edges = self
+            .edges
+            .iter()
+            .filter(|&(u, w)| *u != v && *w != v)
+            .map(|&(u, w)| (dec(u), dec(w)))
             .collect();
-        self.adj.remove(v as usize);
+        let mut adj = self.adj.clone();
+        adj.remove(v as usize);
         let mask = (1 << v) - 1;
-        for a in self.adj.iter_mut() {
+        for a in adj.iter_mut() {
             *a = (*a & mask) | ((*a >> 1) & !mask);
+        }
+        Self {
+            num_vertices,
+            edges,
+            adj,
         }
     }
 
     /// Returns whether a given vertex has valency 2
-    pub fn has_valency_2(&self, vertex: u8) -> bool {
+    pub fn has_valency2(&self, vertex: u8) -> bool {
         self.adj[vertex as usize].count_ones() == 2
+    }
+
+    /// Return all valency 2 vertices
+    pub fn edges_valency_2(&self) -> Vec<u8> {
+        let mut edges: Vec<u8> = Vec::new();
+        for i in 0..self.num_vertices {
+            if self.has_valency2(i) {
+                edges.push(i);
+            }
+        }
+        edges
     }
 
     pub fn is_multigraph(&self) -> bool {
@@ -561,7 +578,6 @@ impl Graph {
         let mut new_v = 0;
         for (i, &a) in self.adj.iter().enumerate() {
             match a.count_ones() {
-                0..=1 => {}
                 2 => {
                     let mut iter = BitPositions(a);
                     let v = iter.next().unwrap();
@@ -708,6 +724,28 @@ impl Graph {
             }
         }
         (i, components)
+    }
+
+    /// Returns whether a graph is 3-edge connected
+    /// Expected to be called on simple 3 valent graph only and in the bipartite form!
+    pub fn is_3edge_connected(&self) -> bool {
+        if self.is_multigraph() {
+            return false;
+        }
+        let edges = self.edges_valency_2();
+
+        for e1 in edges.iter() {
+            for e2 in edges.iter() {
+                if e1 <= e2 {
+                    continue;
+                }
+                let g = self.remove_vertex(*e1).remove_vertex(*e2);
+                if g.connected_components().0 > 1 {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
