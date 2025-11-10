@@ -1,5 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::mem;
 
 type HashType = u128;
@@ -13,12 +13,6 @@ pub struct Graph {
     pub num_vertices: u8,
     pub edges: Vec<Edge>,
     pub adj: Vec<u64>, // adjacency matrix as bit-packed rows
-}
-
-#[derive(Clone, Debug)]
-pub struct ForestedGraph {
-    pub graph: Graph,
-    pub forest: Vec<u8>,
 }
 
 /// An iterator over the position of bits in a bitmask.
@@ -528,8 +522,8 @@ impl Graph {
         let min = iter.next().unwrap_or(v as usize) as u8;
         for u in iter {
             morphism[u] = min;
-            for i in u + 1..self.num_vertices as usize {
-                morphism[i] -= 1;
+            for m in morphism.iter_mut().skip(u + 1) {
+                *m -= 1;
             }
         }
         let f = |a| Some(morphism[a as usize]).filter(|_| a != v);
@@ -544,7 +538,7 @@ impl Graph {
     /// Turn valency 2 vertices into new edges.
     /// Return the list of original indices of the new edges.
     pub fn simplify(&self, retain_multiedges: bool) -> (Self, Vec<(Edge, u8)>) {
-        let mut new_edges = HashMap::new();
+        let mut new_edges = FxHashMap::default();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
         let mut new_v = 0;
         for (i, &a) in self.adj.iter().enumerate() {
@@ -590,6 +584,7 @@ impl Graph {
         Graph::new(self.num_vertices + i, edges)
     }
 
+    /// Find all subforests with the given minimum and maximum size.
     pub fn subforests(&self, min_edges: usize, max_edges: usize) -> Vec<Vec<Edge>> {
         // The currently found forest.
         let mut forest = Vec::with_capacity(self.num_vertices as usize - 1);
@@ -642,6 +637,7 @@ impl Graph {
         output
     }
 
+    /// Convert the graph to a multigraph, with new edges given by degree 2 vertices.
     pub fn to_multigraph(&self) -> Self {
         let mut new_edges = Vec::new();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
@@ -702,12 +698,6 @@ pub fn permute_mask(mask: u64, perm: &[u8]) -> u64 {
         m |= 1 << i;
     }
     m
-}
-
-/// Remove the v-th bit of the mask, shifting the bits upper than v one place to the right.
-pub fn delete_vertex_from_mask(mask: u64, v: u8) -> u64 {
-    let m = (1 << v) - 1;
-    (mask & m) | ((mask >> 1) & !m)
 }
 
 impl Iterator for BitPositions {

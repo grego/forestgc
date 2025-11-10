@@ -247,7 +247,7 @@ fn test_is_multigraph_benzen_rank4() {
 
 #[test]
 fn test_is_multigraph1() {
-    let path = "/home/tom/forestgc/graphs/v12_e18.g6";
+    let path = "graphs/v12_e18.g6";
 
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
@@ -271,7 +271,7 @@ fn test_is_multigraph1() {
 
 #[test]
 fn test_is_multigraph2() {
-    let path = "/home/tom/forestgc/graphs/v14_e21.g6";
+    let path = "graphs/v14_e21.g6";
 
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
