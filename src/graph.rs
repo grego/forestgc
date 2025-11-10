@@ -1,3 +1,4 @@
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, HashMap};
 use std::mem;
 
@@ -71,7 +72,8 @@ pub fn compose(a: &[u8], b: &[u8]) -> Vec<u8> {
 }
 
 impl Graph {
-    pub fn new(num_vertices: u8, mut edges: Vec<(u8, u8)>) -> Self {
+    pub fn new(num_vertices: u8, edges: Vec<(u8, u8)>) -> Self {
+        let mut edges: Vec<(u8, u8)> = edges.iter().map(|&(a, b)| (a.min(b), a.max(b))).collect();
         edges.sort_unstable();
         let mut adj = vec![0u64; num_vertices as usize];
         for &(u, v) in &edges {
@@ -479,6 +481,21 @@ impl Graph {
         for a in self.adj.iter_mut() {
             *a = (*a & mask) | ((*a >> 1) & !mask);
         }
+    }
+
+    /// Returns whether a given vertex has valency 2
+    pub fn has_valency_2(&self, vertex: u8) -> bool {
+        self.adj[vertex as usize].count_ones() == 2
+    }
+
+    pub fn is_multigraph(&self) -> bool {
+        let mut seen = FxHashSet::default();
+        for item in &self.adj {
+            if !seen.insert(item) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Contracts the given edge, expects to be called on simple graphs!

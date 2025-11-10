@@ -1,4 +1,6 @@
 use graphc::graph::*;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 static PETERSEN_VERTICES: u8 = 10;
 static PETERSEN_EDGES: &[(u8, u8)] = &[
@@ -185,25 +187,19 @@ fn test_contract_edge_benzen_rank4() {
 // contract_neighborhood function
 
 #[test]
-fn test_contract_binary_neighborhood_petersen() {
+fn test_contract_neighborhood_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
     let contrpetersen: Graph = petersen.contract_edge((5, 9));
     let contrpetersenbipart: Graph = contrpetersen.to_bipartite();
     let petersenbipart: Graph = petersen.to_bipartite().contract_neighborhood(10).0;
 
-    for ed in PETERSEN_EDGES {
+    for ed in petersen.edges.iter() {
         let gg: Graph = petersen.contract_edge(*ed).to_bipartite();
         for i in 10..24 {
             let g: Graph = petersen.to_bipartite().contract_neighborhood(i).0;
-            // let g1 = g.edges.clone().sort_unstable();
-            // let g2 = gg.edges.clone().sort_unstable();
-            //  assert!(g1 != g2);
             assert!(g.is_isomorphic_to(&gg));
         }
     }
-
-    // assert_eq!(petersenbipart.edges, contrpetersenbipart.edges);
-    // assert_eq!(petersenbipart.adj, contrpetersenbipart.adj);
 
     assert!(petersenbipart.is_isomorphic_to(&contrpetersenbipart));
 }
@@ -214,9 +210,6 @@ fn test_contract_neighborhood_morita_rank4() {
     let contrmorita: Graph = morita.contract_edge((2, 3));
     let contrmoritabipart: Graph = contrmorita.to_bipartite();
     let moritabipart: Graph = morita.to_bipartite().contract_neighborhood(10).0;
-
-    //  assert_eq!(moritabipart.edges, contrmoritabipart.edges);
-    // assert_eq!(moritabipart.adj, contrmoritabipart.adj);
 
     assert!(moritabipart.is_isomorphic_to(&contrmoritabipart));
 }
@@ -235,7 +228,67 @@ fn test_contract_neighborhood_benzen_rank4() {
 }
 
 #[test]
-fn test_delete_vertex_from_mask() {
-    let mask = 0b10011;
-    assert_eq!(delete_vertex_from_mask(mask, 2), 0b1011);
+fn test_is_multigraph_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert!(!petersen.is_multigraph());
+}
+
+#[test]
+fn test_is_multigraph_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert!(!morita.is_multigraph());
+}
+
+#[test]
+fn test_is_multigraph_benzen_rank4() {
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert!(benzen.is_multigraph());
+}
+
+#[test]
+fn test_is_multigraph1() {
+    let path = "/home/tom/forestgc/graphs/v12_e18.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 365);
+
+    let mut i = 0;
+    for g in graphs.iter() {
+        if g.is_multigraph() {
+            i += 1;
+        }
+    }
+
+    assert_eq!(i, 284);
+}
+
+#[test]
+fn test_is_multigraph2() {
+    let path = "/home/tom/forestgc/graphs/v14_e21.g6";
+
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let n_graphs = graphs.len();
+
+    assert_eq!(n_graphs, 2602);
+
+    let mut i = 0;
+    for g in graphs.iter() {
+        if g.is_multigraph() {
+            i += 1;
+        }
+    }
+
+    assert_eq!(i, 2122);
 }
