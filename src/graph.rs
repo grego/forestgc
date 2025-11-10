@@ -497,6 +497,18 @@ impl Graph {
         }
         false
     }
+    /// Returns the number of double edges of a multigraph
+    /// Expect the graph to contain at most double edges, no triple edges or more
+    pub fn count_double_edges(&self) -> u8 {
+        let mut i: u8 = 0;
+        let mut seen = FxHashSet::default();
+        for item in &self.adj {
+            if !seen.insert(item) {
+                i += 1;
+            }
+        }
+        i
+    }
 
     /// Contracts the given edge, expects to be called on simple graphs!
     /// Crashed if the edge is not present in the graph!
