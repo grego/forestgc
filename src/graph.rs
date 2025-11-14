@@ -495,7 +495,7 @@ impl Graph {
     }
 
     /// Return all valency 2 vertices
-    pub fn edges_valency_2(&self) -> Vec<u8> {
+    pub fn vertices_valency2(&self) -> Vec<u8> {
         let mut edges: Vec<u8> = Vec::new();
         for i in 0..self.num_vertices {
             if self.has_valency2(i) {
@@ -572,6 +572,8 @@ impl Graph {
 
     /// Turn valency 2 vertices into new edges.
     /// Return the list of original indices of the new edges.
+    /// If retain_multiedges is true, it returns a graph with only a single edge in place of a multiedge
+    /// if retain_multiedges is false, it returns a graph with no edge in place of a multiedge
     pub fn simplify(&self, retain_multiedges: bool) -> (Self, Vec<(Edge, u8)>) {
         let mut new_edges = FxHashMap::default();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
@@ -729,10 +731,10 @@ impl Graph {
     /// Returns whether a graph is 3-edge connected
     /// Expected to be called on simple 3 valent graph only and in the bipartite form!
     pub fn is_3edge_connected(&self) -> bool {
-        if self.is_multigraph() {
-            return false;
-        }
-        let edges = self.edges_valency_2();
+        // if self.is_multigraph() {
+        //     return false;
+        // }
+        let edges = self.vertices_valency2();
 
         for e1 in edges.iter() {
             for e2 in edges.iter() {

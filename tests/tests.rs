@@ -247,221 +247,228 @@ fn test_count_double_edges_benzen_rank4() {
     assert_eq!(benzen.count_double_edges(), 3);
 }
 
+fn count_double_edges_3edge_connected(path: &str) -> (usize, Vec<Vec<Graph>>, usize) {
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let graphs_loaded_number = graphs.len();
+
+    let mut graphs_split: Vec<Vec<Graph>> = vec![
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    ];
+    for g in graphs.iter() {
+        graphs_split[g.count_double_edges() as usize].push(g.clone());
+    }
+
+    let mut three_edge_connected_number = 0;
+    for g in graphs_split[0].iter() {
+        if g.is_3edge_connected() {
+            three_edge_connected_number += 1;
+        }
+    }
+
+    (
+        graphs_loaded_number,
+        graphs_split,
+        three_edge_connected_number,
+    )
+}
+
 //#[test]
-fn test_count_double_edges_rank7() {
+fn test_count_double_edges_and_3edge_connected_rank7() {
     let path = "graphs/v12_e18.g6";
 
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
 
-    assert_eq!(n_graphs, 365);
+    let graphs_split_numbers_expected = [
+        81, 105, 101, 53, 20, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let expectedsplit = [
-        81, 105, 101, 53, 20, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    let mut split = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    for g in graphs.iter() {
-        split[g.count_double_edges() as usize] += 1;
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
     }
 
-    assert_eq!(split, expectedsplit);
+    assert_eq!(graphs_loaded_number, 365);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 57);
 }
 
 //#[test]
-fn test_count_double_edges_rank8() {
+fn test_count_double_edges_and_3edge_connected_rank8() {
     let path = "graphs/v14_e21.g6";
 
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
 
-    assert_eq!(n_graphs, 2602);
+    let graphs_split_numbers_expected = [
+        480, 777, 744, 406, 152, 36, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let expectedsplit = [
-        480, 777, 744, 406, 152, 36, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    let mut split = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    for g in graphs.iter() {
-        split[g.count_double_edges() as usize] += 1;
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
     }
 
-    assert_eq!(split, expectedsplit);
+    assert_eq!(graphs_loaded_number, 2602);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 341);
 }
 
 //#[test]
-fn test_3edge_connected_rank8() {
-    let path = "graphs/v14_e21.g6";
+fn test_count_double_edges_and_3edge_connected_rank8_excess1() {
+    let path = "graphs/v13_e20.g6";
 
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
 
-    assert_eq!(n_graphs, 2602);
+    let graphs_split_numbers_expected = [
+        1881, 4330, 4573, 2761, 1028, 224, 25, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let mut i = 0;
-    for g in graphs.iter() {
-        if g.is_3edge_connected() {
-            i += 1;
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
+    }
+
+    assert_eq!(graphs_loaded_number, 14823);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    // assert_eq!(three_edge_connected_number, 341);
+
+    let mut num = vec![0, 0, 0, 0];
+    let expnum = vec![1483, 856, 0, 0];
+
+    for i in 0..4 {
+        for g in graphs_split[i].iter() {
+            if g.is_3edge_connected() {
+                num[i] += 1;
+            }
         }
     }
 
-    assert_eq!(i, 341);
+    assert_eq!(num, expnum);
 }
 
 //#[test]
-fn test_count_double_edges_rank9() {
+fn test_count_double_edges_and_3edge_connected_rank9() {
     let path = "graphs/v16_e24.g6";
 
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
 
-    assert_eq!(n_graphs, 23811);
+    let graphs_split_numbers_expected = [
+        3874, 7152, 6904, 3918, 1508, 379, 68, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let expectedsplit = [
-        3874, 7152, 6904, 3918, 1508, 379, 68, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    let mut split = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    for g in graphs.iter() {
-        split[g.count_double_edges() as usize] += 1;
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
     }
 
-    assert_eq!(split, expectedsplit);
-}
-
-//#[test]
-fn test_3edge_connected_rank9() {
-    let path = "graphs/v16_e24.g6";
-
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
-
-    assert_eq!(n_graphs, 23811);
-
-    let mut i = 0;
-    for g in graphs.iter() {
-        if g.is_3edge_connected() {
-            i += 1;
-        }
-    }
-
-    assert_eq!(i, 2828);
-}
-
-//#[test]
-fn test_count_double_edges_rank10() {
-    let path = "graphs/v18_e27.g6";
-
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
-
-    assert_eq!(n_graphs, 264993);
-
-    let expectedsplit = [
-        39866, 79284, 77080, 45125, 17829, 4794, 896, 109, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    let mut split = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ];
-    for g in graphs.iter() {
-        split[g.count_double_edges() as usize] += 1;
-    }
-
-    assert_eq!(split, expectedsplit);
-}
-
-//#[test]
-fn test_3edge_connected_rank10() {
-    let path = "graphs/v18_e27.g6";
-
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    let graphs = reader
-        .lines()
-        .map(|g6| Graph::from_g6(&g6.unwrap()))
-        .collect::<Vec<Graph>>();
-    let n_graphs = graphs.len();
-
-    assert_eq!(n_graphs, 264993);
-
-    let mut i = 0;
-    for g in graphs.iter() {
-        if g.is_3edge_connected() {
-            i += 1;
-        }
-    }
-
-    assert_eq!(i, 30468);
+    assert_eq!(graphs_loaded_number, 23811);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 2828);
 }
 
 #[test]
-fn test_edges_valency2_petersen() {
+fn test_count_double_edges_and_3edge_connected_rank10() {
+    let path = "graphs/v18_e27.g6";
+
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
+
+    let graphs_split_numbers_expected = [
+        39866, 79284, 77080, 45125, 17829, 4794, 896, 109, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
+    }
+
+    assert_eq!(graphs_loaded_number, 264993);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 30468);
+}
+
+// vertices_valency2 function
+
+#[test]
+fn test_vertices_valency2_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
-    assert_eq!(petersen.edges_valency_2().len(), 15);
+    assert_eq!(petersen.vertices_valency2().len(), 15);
 }
 
 #[test]
-fn test_edges_valency2_morita_rank4() {
+fn test_vertices_valency2_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
-    assert_eq!(morita.edges_valency_2().len(), 9);
+    assert_eq!(morita.vertices_valency2().len(), 9);
 }
 
 #[test]
-fn test_edges_valency2_benzen_rank4() {
+fn test_vertices_valency2_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
-    assert_eq!(benzen.edges_valency_2().len(), 9);
+    assert_eq!(benzen.vertices_valency2().len(), 9);
 }
 
+// connected_components function
+
 #[test]
-fn test_connected_components() {
+fn test_connected_components_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.connected_components().0, 1);
+}
+
+#[test]
+fn test_connected_components_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(morita.connected_components().0, 1);
+}
+
+#[test]
+fn test_connected_components_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.connected_components().0, 1);
+}
 
+#[test]
+fn test_connected_components_4components() {
     let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
     let g = Graph::new(8, edges);
     assert_eq!(g.connected_components().0, 4);
+}
 
+#[test]
+fn test_connected_components_4components_biggraph() {
     let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
     let g = BigGraph::new(8, edges);
     assert_eq!(g.connected_components().0, 4);
 }
+
+// test is_3edge_connected
 
 #[test]
 fn test_is_3edge_connected_petersen() {
