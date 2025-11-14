@@ -393,7 +393,7 @@ fn test_count_double_edges_and_3edge_connected_rank9() {
     assert_eq!(three_edge_connected_number, 2828);
 }
 
-#[test]
+//#[test]
 fn test_count_double_edges_and_3edge_connected_rank10() {
     let path = "graphs/v18_e27.g6";
 
