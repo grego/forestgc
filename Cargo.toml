@@ -16,3 +16,7 @@ path = "src/main.rs"
 [[bin]]
 name = "g6dot"
 path = "src/g6dot.rs"
+
+[[bin]]
+name = "smssort"
+path = "src/smssort.rs"

@@ -194,12 +194,29 @@ impl ForestedGraph {
 }
 
 impl UnmarkDifferential {
+    /// Return the list of subforests obtained by unmarking an edge.
     pub fn smaller_forests(&self) -> &[u64] {
         &self.smaller_forests
     }
 
+    /// Return the list of signed unmarkings for each edge.
     pub fn columns(&self) -> &[Vec<(u64, i8)>] {
         &self.columns
+    }
+
+    /// List the sparse matrix entries for this differential, with an optional shift
+    /// of rows and columns.
+    pub fn matrix_entries(
+        &self,
+        col_shift: u32,
+        row_shift: u32,
+    ) -> impl Iterator<Item = (u32, u32, i8)> {
+        self.columns.iter().enumerate().flat_map(move |(i, c)| {
+            c.iter().map(move |(m, s)| {
+                let j = self.smaller_forests.binary_search(m).unwrap();
+                (j as u32 + row_shift, i as u32 + col_shift, *s)
+            })
+        })
     }
 }
 
@@ -237,9 +254,12 @@ pub fn canonical_subforest(mask: u64, perms: &[Vec<u8>]) -> Option<(u64, i8)> {
 /// or push a new one if not already present.
 #[inline]
 fn add_or_push<T: Eq>(l: &mut Vec<(T, i8)>, k: T, v: i8) {
-    for (kk, vv) in l.iter_mut() {
-        if *kk == k {
-            *vv += v;
+    for i in 0..l.len() {
+        if l[i].0 == k {
+            l[i].1 += v;
+            if l[i].1 == 0 {
+                l.swap_remove(i);
+            }
             return;
         }
     }
