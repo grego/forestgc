@@ -553,17 +553,29 @@ impl Graph {
         let mut morphism: Vec<_> = (0..self.num_vertices).collect();
         let neigh = self.adj[v as usize] | (1 << v);
         let size = neigh.count_ones() as u8;
-        let mut iter = BitPositions(neigh);
-        let min = iter.next().unwrap_or(v as usize) as u8;
-        for u in iter {
+
+        // Make sure to not create a double edge.
+        let mut edges = self.edges.clone();
+        for (w, &a) in self.adj.iter().enumerate() {
+            for u in BitPositions(neigh & a).skip(1) {
+                if let Some(i) = edges
+                    .iter()
+                    .position(|e| *e == (u.min(w) as u8, u.max(w) as u8))
+                {
+                    edges.swap_remove(i);
+                }
+            }
+        }
+
+        let min = neigh.trailing_zeros() as u8;
+        for u in BitPositions(neigh).skip(1) {
             morphism[u] = min;
             for m in morphism.iter_mut().skip(u + 1) {
                 *m -= 1;
             }
         }
         let f = |a| Some(morphism[a as usize]).filter(|_| a != v);
-        let edges = self
-            .edges
+        let edges = edges
             .iter()
             .filter_map(|&(a, b)| Some((f(a)?, f(b)?)))
             .collect();
@@ -612,9 +624,11 @@ impl Graph {
         let mut edges = Vec::new();
         for (v1, v2) in self.edges.iter() {
             let e1: Edge = (*v1, self.num_vertices + i);
-            let e2: Edge = (*v2, self.num_vertices + i);
             edges.push(e1);
-            edges.push(e2);
+            if v2 != v1 {
+                let e2: Edge = (*v2, self.num_vertices + i);
+                edges.push(e2);
+            }
             i += 1;
         }
         Graph::new(self.num_vertices + i, edges)
@@ -680,7 +694,10 @@ impl Graph {
         let mut new_v = 0;
         for (i, &a) in self.adj.iter().enumerate() {
             match a.count_ones() {
-                1 => {}
+                1 => {
+                    let v = a.trailing_zeros();
+                    new_edges.push((v as u8, v as u8));
+                }
                 2 => {
                     let mut iter = BitPositions(a);
                     let v = iter.next().unwrap();

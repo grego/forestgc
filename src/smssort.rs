@@ -13,7 +13,7 @@ fn main() {
     };
 
     let file = File::open(&filename).unwrap();
-    let reader = BufReader::new(file);
+    let reader = BufReader::with_capacity(500_000_000, file);
     let mut lines = reader.lines();
     let first = lines.next().unwrap().unwrap();
     let mut lines = lines
@@ -35,7 +35,7 @@ fn main() {
     println!("Sorted in {:.3}ms", t.elapsed().as_secs_f64() * 1e3);
 
     let file = File::create(filename).unwrap();
-    let mut file = BufWriter::new(file);
+    let mut file = BufWriter::with_capacity(500_000_000, file);
     writeln!(&mut file, "{first}").unwrap();
     for line in lines {
         writeln!(&mut file, "{} {} {}", line[0], line[1], line[2]).unwrap();

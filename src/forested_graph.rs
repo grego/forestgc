@@ -36,13 +36,19 @@ pub struct ContractDifferential {
 }
 
 impl ForestedGraph {
-    /// Find all subforests, up to isomorphism, of the graph.
+    /// Find all subforests, up to isomorphism, of the graph, with the given size.
     /// Edges on multiedges can be disabled.
     pub fn new(g: &Graph, forest_size: usize, forests_on_multiedges: bool) -> Self {
+        Self::in_range(g, forest_size, forest_size, forests_on_multiedges)
+    }
+
+    /// Find all subforests, up to isomorphism, of the graph, in the specified range.
+    /// Edges on multiedges can be disabled.
+    pub fn in_range(g: &Graph, min: usize, max: usize, forests_on_multiedges: bool) -> Self {
         let (graph, _, mut perms) = g.canonical_label();
 
         let (gs, dict) = graph.simplify(forests_on_multiedges);
-        let subfs = gs.subforests(forest_size, forest_size);
+        let subfs = gs.subforests(min, max);
         let mut subforests = FxHashSet::default();
         for subf in subfs {
             let mut mask = 0_u64;
@@ -76,6 +82,10 @@ impl ForestedGraph {
             edges,
             subforests,
         }
+    }
+    /// Find all subforests, up to isomorphism, of the graph.
+    pub fn all(g: &Graph) -> Self {
+        Self::in_range(g, 1, g.num_vertices as usize - 1, true)
     }
 
     /// Create a new forested graph with only the provided subforests.

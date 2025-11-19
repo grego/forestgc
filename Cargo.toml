@@ -2,15 +2,15 @@
 name = "graphc"
 version = "0.1.0"
 edition = "2024"
-default-run = "main"
+default-run = "forestgc"
 
 [dependencies]
-rand = "0.9.2"
+argh = "0.1.13"
 rayon = "1.11.0"
 rustc-hash = "2.1.1"
 
 [[bin]]
-name = "main"
+name = "forestgc"
 path = "src/main.rs"
 
 [[bin]]

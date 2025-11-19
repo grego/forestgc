@@ -47,6 +47,18 @@ static BENZEN_RANK4_EDGES: &[(u8, u8)] = &[
     (3, 5),
 ];
 
+static BENZEN_LOOP_RANK4_VERTICES: u8 = 5;
+static BENZEN_LOOP_RANK4_EDGES: &[(u8, u8)] = &[
+    (0, 0),
+    (0, 3),
+    (0, 4),
+    (1, 2),
+    (1, 3),
+    (1, 3),
+    (2, 4),
+    (2, 4),
+];
+
 // subforests function
 #[test]
 fn test_subforest_petersen() {
@@ -223,6 +235,12 @@ fn test_contract_neighborhood_benzen_rank4() {
 
     assert_eq!(benzenbipart.edges, contrbenzenbipart.edges);
     assert_eq!(benzenbipart.adj, contrbenzenbipart.adj);
+
+    let benzenloop: Graph = benzen.to_bipartite().contract_neighborhood(6).0;
+    let bloop: Graph =
+        Graph::new(BENZEN_LOOP_RANK4_VERTICES, BENZEN_LOOP_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(benzenloop.edges, bloop.edges);
+    assert_eq!(benzenloop.adj, bloop.adj);
 
     assert!(benzenbipart.is_isomorphic_to(&contrbenzenbipart));
 }
