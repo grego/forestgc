@@ -1,7 +1,7 @@
 use crate::graph::{BitPositions, Graph};
 use crate::graph::{compose, permute_mask, sign_subset};
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Graph with all subforests. It is a multigraph without tadpoles, with edges of
 /// valency at least 3.
@@ -33,6 +33,16 @@ pub struct ContractDifferential {
     contracted_graphs: Vec<(String, Vec<u64>)>,
     /// The columns of the differential - `((graph_index, subforest), value)`.
     columns: Vec<Vec<((usize, u64), i8)>>,
+}
+
+/// A table, providing for each graph and its subforest the index of its row.
+pub struct GraphTable {
+    /// Different underlying graphs.
+    graphs: FxHashMap<String, usize>,
+    /// All subforests in the graphs.
+    forests: Vec<Vec<u64>>,
+    /// Pre-computed indices for the rows.
+    indices: Vec<usize>,
 }
 
 impl ForestedGraph {
@@ -237,6 +247,60 @@ impl ContractDifferential {
 
     pub fn columns(&self) -> &[Vec<((usize, u64), i8)>] {
         &self.columns
+    }
+}
+
+impl GraphTable {
+    /// Create a new graphtable from an iterator of a graph G6 string and a list of subforests.
+    pub fn new<'a>(iter: impl Iterator<Item = (&'a str, &'a [u64])>) -> Self {
+        let mut num = 0;
+        let mut graphs = FxHashMap::default();
+        let mut forest_sets = Vec::new();
+        for (g, fs) in iter {
+            let j = graphs.entry(g.to_string()).or_insert_with(|| {
+                forest_sets.push(FxHashSet::default());
+                num += 1;
+                num - 1
+            });
+            for &i in fs {
+                forest_sets[*j].insert(i);
+            }
+        }
+        let forests: Vec<_> = forest_sets
+            .drain(..)
+            .map(|mut fs| {
+                let mut fs: Vec<_> = fs.drain().collect();
+                fs.sort_unstable();
+                fs
+            })
+            .collect();
+
+        let mut indices = vec![0; num + 1];
+        let mut sum = 0;
+        for i in 0..num {
+            sum += forests[i].len();
+            indices[i + 1] = sum;
+        }
+        Self {
+            graphs,
+            forests,
+            indices,
+        }
+    }
+
+    /// Get the number of the forested graphs in the table.
+    pub fn size(&self) -> usize {
+        *self.indices.last().unwrap()
+    }
+
+    /// Get the number of the forested graphs in the table.
+    pub fn num_graphs(&self) -> usize {
+        self.forests.len()
+    }
+
+    pub fn get_index(&self, g: &str, forest: u64) -> usize {
+        let &index = &self.graphs.get(g).unwrap();
+        self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index]
     }
 }
 

@@ -1,14 +1,12 @@
 use rayon::prelude::*;
 
-use graphc::forested_graph::ForestedGraph;
+use graphc::forested_graph::{ForestedGraph, GraphTable};
 use graphc::graph::Graph;
 
 use argh::FromArgs;
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::io::{BufWriter, Write};
-use std::mem;
 use std::time::Instant;
 
 /// Forested graph complex computations.
@@ -142,52 +140,21 @@ fn compute_matrix(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matrix_na
     println!("du differential rows: {}", durows);
 
     let dcs: Vec<_> = fgs.into_par_iter().map(|fg| fg.d_contract()).collect();
-
-    let mut contracted_num = 0;
-    let mut contracted_graphs = FxHashMap::default();
-    for dc in dcs.iter() {
-        for (g, fs) in dc.contracted_graphs() {
-            let (_, cg) = contracted_graphs.entry(g.clone()).or_insert_with(|| {
-                contracted_num += 1;
-                (contracted_num - 1, FxHashSet::default())
-            });
-            for i in fs {
-                cg.insert(i);
-            }
-        }
-    }
-    let mut contracted: Vec<Vec<u64>> = vec![Vec::new(); contracted_num];
-    for (i, forests) in contracted_graphs.values_mut() {
-        let mut forests = mem::take(forests);
-        contracted[*i].extend(
-            forests
-                .drain()
-                .inspect(|&f| assert_eq!(f.count_ones(), forest_size as u32 - 1)),
-        );
-        contracted[*i].sort_unstable();
-    }
-
-    let mut crow_indices = vec![0; contracted_num];
-    let mut csum = 0;
-    for i in 0..contracted_num {
-        csum += contracted[i].len();
-        if i + 1 < contracted_num {
-            crow_indices[i + 1] = csum;
-        }
-    }
-
+    let graph_table = GraphTable::new(
+        dcs.iter()
+            .flat_map(|dc| dc.contracted_graphs())
+            .map(|(g, fs)| (g.as_str(), fs.as_slice())),
+    );
+    let csum = graph_table.size();
     println!("dc differential rows: {}", csum);
-    println!("Number of contracted graphs: {}", contracted_num);
+    println!("Number of contracted graphs: {}", graph_table.num_graphs());
 
     let mut column = 0;
     for dc in &dcs {
         for entries in dc.columns() {
             for ((i, m), s) in entries {
                 let (g, _) = &dc.contracted_graphs()[*i];
-                let &(index, _) = &contracted_graphs.get(g.as_str()).unwrap();
-                let j = contracted[*index].binary_search(m).unwrap()
-                    + crow_indices[*index]
-                    + durows as usize;
+                let j = graph_table.get_index(g, *m) + durows as usize;
                 writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
             }
             column += 1;
@@ -241,57 +208,25 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
     }
     println!("Pairs graph + subforest up to iso: {}", columns);
 
-    let mut contracted_num = 0;
-    let mut contracted_graphs = FxHashMap::default();
-    for (g6, du) in g6s.iter().zip(dus.iter()) {
-        let (_, cg) = contracted_graphs.entry(g6.clone()).or_insert_with(|| {
-            contracted_num += 1;
-            (contracted_num - 1, FxHashSet::default())
-        });
-        for i in du.smaller_forests() {
-            cg.insert(i);
-        }
-    }
-    for dc in dcs.iter() {
-        for (g, fs) in dc.contracted_graphs() {
-            let (_, cg) = contracted_graphs.entry(g.clone()).or_insert_with(|| {
-                contracted_num += 1;
-                (contracted_num - 1, FxHashSet::default())
-            });
-            for i in fs {
-                cg.insert(i);
-            }
-        }
-    }
-    let mut contracted: Vec<Vec<u64>> = vec![Vec::new(); contracted_num];
-    for (i, forests) in contracted_graphs.values_mut() {
-        let mut forests = mem::take(forests);
-        contracted[*i].extend(
-            forests
-                .drain()
-                .inspect(|&f| assert_eq!(f.count_ones(), forest_size as u32 - 1)),
-        );
-        contracted[*i].sort_unstable();
-    }
-
-    let mut crow_indices = vec![0; contracted_num];
-    let mut csum = 0;
-    for i in 0..contracted_num {
-        csum += contracted[i].len();
-        if i + 1 < contracted_num {
-            crow_indices[i + 1] = csum;
-        }
-    }
-
+    let graph_table = GraphTable::new(
+        g6s.iter()
+            .map(|s| s.as_str())
+            .zip(dus.iter().map(|du| du.smaller_forests()))
+            .chain(
+                dcs.iter()
+                    .flat_map(|dc| dc.contracted_graphs())
+                    .map(|(g, fs)| (g.as_str(), fs.as_slice())),
+            ),
+    );
+    let csum = graph_table.size();
     println!("du + dc differential rows: {}", csum);
-    println!("Number of target graphs: {}", contracted_num);
+    println!("Number of target graphs: {}", graph_table.num_graphs());
 
     let mut column = 0;
     for (g6, du) in g6s.iter().zip(dus.iter()) {
         for entries in du.columns() {
             for (m, s) in entries {
-                let &(index, _) = &contracted_graphs.get(g6.as_str()).unwrap();
-                let j = contracted[*index].binary_search(m).unwrap() + crow_indices[*index];
+                let j = graph_table.get_index(g6, *m);
                 writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
             }
             column += 1;
@@ -302,8 +237,7 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
         for entries in dc.columns() {
             for ((i, m), s) in entries {
                 let (g, _) = &dc.contracted_graphs()[*i];
-                let &(index, _) = &contracted_graphs.get(g.as_str()).unwrap();
-                let j = contracted[*index].binary_search(m).unwrap() + crow_indices[*index];
+                let j = graph_table.get_index(g, *m);
                 writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
             }
             column += 1;
@@ -341,7 +275,18 @@ fn print_dimensions(rank: u8, three_connected: bool) {
         println!();
         e -= 1;
     }
+    let mut sums = vec![0; dims.len()];
+    for d in &dims {
+        for (i, n) in d.iter().enumerate() {
+            sums[i] += n;
+        }
+    }
+    print!("sum\t");
+    for d in sums {
+        print!("{d}\t")
+    }
     println!();
+
     let ech = euler_characteristics(&dims);
     print!("rank dc\t");
     for ch in ech {
