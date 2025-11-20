@@ -315,6 +315,67 @@ fn count_double_edges_3edge_connected(path: &str) -> (usize, Vec<Vec<Graph>>, us
 }
 
 //#[test]
+fn test_count_double_edges_and_3edge_connected_rank4() {
+    let path = "graphs/v6_e9.g6";
+
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
+
+    let graphs_split_numbers_expected =
+        [2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
+    }
+
+    assert_eq!(graphs_loaded_number, 5);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 2);
+}
+
+//#[test]
+fn test_count_double_edges_and_3edge_connected_rank5() {
+    let path = "graphs/v8_e12.g6";
+
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
+
+    let graphs_split_numbers_expected =
+        [5, 4, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
+    }
+
+    assert_eq!(graphs_loaded_number, 16);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 4);
+}
+
+//#[test]
+fn test_count_double_edges_and_3edge_connected_rank6() {
+    let path = "graphs/v10_e15.g6";
+
+    let (graphs_loaded_number, graphs_split, three_edge_connected_number) =
+        count_double_edges_3edge_connected(path);
+
+    let graphs_split_numbers_expected = [
+        18, 18, 17, 9, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut split_numbers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    for i in 0..10 {
+        split_numbers[i] = graphs_split[i].len();
+    }
+
+    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(split_numbers, graphs_split_numbers_expected);
+    assert_eq!(three_edge_connected_number, 14);
+}
+
+//#[test]
 fn test_count_double_edges_and_3edge_connected_rank7() {
     let path = "graphs/v12_e18.g6";
 
