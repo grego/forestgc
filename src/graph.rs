@@ -18,7 +18,7 @@ pub struct Graph {
 #[derive(Clone, Debug)]
 pub struct BigGraph {
     pub num_vertices: usize,
-    pub edges: Vec<(usize, usize)>,
+    pub neighbours: Vec<Vec<usize>>,
 }
 
 /// An iterator over the position of bits in a bitmask.
@@ -766,15 +766,62 @@ impl Graph {
         }
         true
     }
+
+    /// Returns whether a graph is k-edge connected
+    /// Expected to be called on simple 3 valent graph only and in the bipartite form!
+    /// If `proper` is set to `true`, each component after deleting `k-1` edges
+    /// must have more than one vertex.
+    pub fn is_k_edge_connected(&self, k: usize, proper: bool) -> bool {
+        if k == 1 {
+            return true;
+        }
+        if !self.is_k_edge_connected(k - 1, proper) {
+            return false;
+        }
+        // if self.is_multigraph() {
+        //     return false;
+        // }
+        let edges = self.vertices_valency2();
+        let ktuples = get_ktuples(&edges, k - 1);
+
+        'outer: for kt in ktuples {
+            let mut g = self.clone();
+            for &v in kt.iter().rev() {
+                g = g.remove_vertex(v);
+            }
+            let (n, comps) = g.connected_components();
+            if n > 1 {
+                if proper {
+                    for i in 1..=n {
+                        let count = comps.iter().filter(|&&c| c == i).count();
+                        if count == 1 {
+                            continue 'outer;
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl BigGraph {
     pub fn new(num_vertices: usize, edges: Vec<(usize, usize)>) -> Self {
         let mut edges: Vec<_> = edges.iter().map(|&(a, b)| (a.min(b), a.max(b))).collect();
         edges.sort_unstable();
+
+        let mut neighbours = vec![Vec::new(); num_vertices];
+
+        for &(u, v) in edges.iter() {
+            neighbours[u].push(v);
+            neighbours[v].push(u);
+        }
+
         BigGraph {
             num_vertices,
-            edges,
+            neighbours,
         }
     }
 
@@ -789,8 +836,7 @@ impl BigGraph {
             components[u] = i;
             stack.push(u);
             while let Some(v) = stack.pop() {
-                for e in self.edges.iter().filter(|&&(u, w)| u == v || w == v) {
-                    let w = if e.0 == v { e.1 } else { e.0 };
+                for &w in &self.neighbours[v] {
                     if components[w] == 0 {
                         components[w] = i;
                         stack.push(w);
@@ -829,6 +875,34 @@ pub fn permute_mask(mask: u64, perm: &[u8]) -> u64 {
         m |= 1 << i;
     }
     m
+}
+
+/// Get all ktuples of the given array.
+pub fn get_ktuples<T: Copy>(arr: &[T], k: usize) -> Vec<Vec<T>> {
+    let mut ktuples = Vec::new();
+    get_ktuples_iter(k, &mut ktuples, Vec::new(), arr);
+    ktuples
+}
+
+fn get_ktuples_iter<T: Copy>(k: usize, ktuples: &mut Vec<Vec<T>>, head: Vec<T>, rest: &[T]) {
+    if k == 0 {
+        return;
+    }
+
+    if k == 1 {
+        for &i in rest {
+            let mut v = head.clone();
+            v.push(i);
+            ktuples.push(v);
+        }
+        return;
+    }
+
+    for (j, &i) in rest.iter().enumerate() {
+        let mut v = head.clone();
+        v.push(i);
+        get_ktuples_iter(k - 1, ktuples, v, &rest[j + 1..]);
+    }
 }
 
 impl Iterator for BitPositions {

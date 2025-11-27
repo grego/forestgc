@@ -492,16 +492,48 @@ fn test_connected_components_4components_biggraph() {
 fn test_is_3edge_connected_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert!(petersen.is_3edge_connected());
+    assert!(petersen.is_k_edge_connected(3, true));
 }
 
 #[test]
 fn test_is_3edge_connected_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert!(morita.is_3edge_connected());
+    assert!(morita.is_k_edge_connected(3, true));
 }
 
 #[test]
 fn test_is_3edge_connected_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert!(!benzen.is_3edge_connected());
+    assert!(!benzen.is_k_edge_connected(3, true));
+}
+
+#[test]
+fn test_find_ktuples() {
+    let arr = &[1, 2, 3, 4, 5, 6];
+    let res = &[
+        [1, 2, 3],
+        [1, 2, 4],
+        [1, 2, 5],
+        [1, 2, 6],
+        [1, 3, 4],
+        [1, 3, 5],
+        [1, 3, 6],
+        [1, 4, 5],
+        [1, 4, 6],
+        [1, 5, 6],
+        [2, 3, 4],
+        [2, 3, 5],
+        [2, 3, 6],
+        [2, 4, 5],
+        [2, 4, 6],
+        [2, 5, 6],
+        [3, 4, 5],
+        [3, 4, 6],
+        [3, 5, 6],
+        [4, 5, 6],
+    ];
+    assert_eq!(get_ktuples(arr, 3), res);
+    assert_eq!(get_ktuples(arr, 6), [arr]);
 }

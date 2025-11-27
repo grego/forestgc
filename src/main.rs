@@ -37,7 +37,7 @@ fn read_graphfile(filename: &str, three_connected: bool) -> Vec<Graph> {
     let file = File::open(filename).unwrap();
     let reader = BufReader::new(file);
     let g6s = reader.lines().collect::<Result<Vec<_>, _>>().unwrap();
-    g6s.iter()
+    g6s.par_iter()
         .map(|g6| Graph::from_g6(g6))
         .filter(|g| !three_connected || g.is_3edge_connected())
         .collect()
