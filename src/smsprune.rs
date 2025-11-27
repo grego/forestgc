@@ -11,19 +11,22 @@ use graphc::graph::BigGraph;
 
 /// Prune the matrix by deleting all rows/columns containing a single non-zero entry
 /// and the columns/rows where the entry is.
-fn prune_matrix<const BY_COLUMNS: usize>(m: &mut Vec<[i32; 3]>, dims: [usize; 2]) -> [usize; 2] {
+fn prune_matrix<const BY_COLUMNS: usize>(
+    m: &mut Vec<([u32; 2], i8)>,
+    dims: [usize; 2],
+) -> [usize; 2] {
     let [h, w] = dims;
     let mut indices = [vec![0_u32; h], vec![0_u32; w]];
 
-    for &t in m.iter() {
-        if t[2] == 0 {
+    for &(t, s) in m.iter() {
+        if s == 0 {
             println!("0 found {} {}", t[0], t[1]);
         };
         indices[BY_COLUMNS][t[BY_COLUMNS] as usize - 1] += 1;
     }
 
     let mut ones = 0;
-    for &t in m.iter() {
+    for &(t, _) in m.iter() {
         if indices[BY_COLUMNS][t[BY_COLUMNS] as usize - 1] == 1 {
             ones += 1;
             indices[BY_COLUMNS ^ 1][t[BY_COLUMNS ^ 1] as usize - 1] = 1;
@@ -37,8 +40,8 @@ fn prune_matrix<const BY_COLUMNS: usize>(m: &mut Vec<[i32; 3]>, dims: [usize; 2]
         }
     }
 
-    let mut row_shift: Vec<i32> = (0..h as i32).collect();
-    let mut col_shift: Vec<i32> = (0..w as i32).collect();
+    let mut row_shift: Vec<u32> = (0..h as u32).collect();
+    let mut col_shift: Vec<u32> = (0..w as u32).collect();
     let mut shift = 0;
     for i in 0..h {
         if indices[0][i] == 1 {
@@ -63,13 +66,12 @@ fn prune_matrix<const BY_COLUMNS: usize>(m: &mut Vec<[i32; 3]>, dims: [usize; 2]
     let mb = mem::take(m);
     *m = mb
         .into_par_iter()
-        .filter_map(|[i, j, s]| {
+        .filter_map(|([i, j], s)| {
             if indices[0][i as usize - 1] != 1 && indices[1][j as usize - 1] != 1 {
-                Some([
-                    row_shift[i as usize - 1] + 1,
-                    col_shift[j as usize - 1] + 1,
+                Some((
+                    [row_shift[i as usize - 1] + 1, col_shift[j as usize - 1] + 1],
                     s,
-                ])
+                ))
             } else {
                 None
             }
@@ -96,12 +98,14 @@ fn main() {
     let mut lines = lines
         .map(|s| {
             let s = s.unwrap();
-            let mut numbers = s.split_whitespace().map(|i| i.parse::<i32>().unwrap());
-            [
-                numbers.next().unwrap(),
-                numbers.next().unwrap(),
-                numbers.next().unwrap(),
-            ]
+            let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
+            (
+                [
+                    numbers.next().unwrap() as u32,
+                    numbers.next().unwrap() as u32,
+                ],
+                numbers.next().unwrap() as i8,
+            )
         })
         .collect::<Vec<_>>();
     lines.pop();
@@ -150,7 +154,7 @@ fn main() {
 
     let edges = lines
         .iter()
-        .map(|&[i, j, _]| (i as usize - 1, j as usize - 1 + dims[0]))
+        .map(|&([i, j], _)| (i as usize - 1, j as usize - 1 + dims[0]))
         .collect();
     let graph = BigGraph::new(dims[0] + dims[1], edges);
     let (c, _) = graph.connected_components();
@@ -168,8 +172,8 @@ fn main() {
     let file = File::create(parent.join(new_name)).unwrap();
     let mut file = BufWriter::with_capacity(500_000_000, file);
     writeln!(&mut file, "{} {} M", dims[0], dims[1]).unwrap();
-    for line in lines {
-        writeln!(&mut file, "{} {} {}", line[0], line[1], line[2]).unwrap();
+    for ([i, j], s) in lines {
+        writeln!(&mut file, "{i} {j} {s}").unwrap();
     }
     writeln!(&mut file, "0 0 0").unwrap();
 }
