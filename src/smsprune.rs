@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -12,7 +13,7 @@ use graphc::graph::BigGraph;
 /// and the columns/rows where the entry is.
 fn prune_matrix<const BY_COLUMNS: usize>(m: &mut Vec<[i32; 3]>, dims: [usize; 2]) -> [usize; 2] {
     let [h, w] = dims;
-    let mut indices = [vec![0_u32; h as usize], vec![0_u32; w as usize]];
+    let mut indices = [vec![0_u32; h], vec![0_u32; w]];
 
     for &t in m.iter() {
         if t[2] == 0 {
