@@ -467,7 +467,7 @@ fn test_girth_filtration_rank7() {
         vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ];
 
-    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(graphs_loaded_number, 365);
     assert_eq!(matr, expmatr);
 }
 
@@ -506,7 +506,7 @@ fn test_girth_filtration_rank8() {
         vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ];
 
-    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(graphs_loaded_number, 2602);
     assert_eq!(matr, expmatr);
 }
 
@@ -545,7 +545,7 @@ fn test_girth_filtration_rank9() {
         vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ];
 
-    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(graphs_loaded_number, 23811);
     assert_eq!(matr, expmatr);
 }
 
@@ -584,7 +584,7 @@ fn test_girth_filtration_rank10() {
         vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ];
 
-    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(graphs_loaded_number, 264993);
     assert_eq!(matr, expmatr);
 }
 
