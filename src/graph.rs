@@ -1,5 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque, vec_deque};
+use std::i16::MIN;
 use std::mem;
 
 type HashType = u128;
@@ -494,11 +495,44 @@ impl Graph {
         self.adj[vertex as usize].count_ones() == 2
     }
 
+    /// Returns whether a given vertex has valency 3
+    pub fn has_valency3(&self, vertex: u8) -> bool {
+        self.adj[vertex as usize].count_ones() == 3
+    }
+
+    /// Returns whether a given vertex has valency at least `min` and at most `max`
+    pub fn has_valency(&self, vertex: u8, min: u8, max: u8) -> bool {
+        (self.adj[vertex as usize].count_ones() >= min as u32)
+            && (self.adj[vertex as usize].count_ones() <= max as u32)
+    }
+
     /// Return all valency 2 vertices
     pub fn vertices_valency2(&self) -> Vec<u8> {
         let mut edges: Vec<u8> = Vec::new();
         for i in 0..self.num_vertices {
             if self.has_valency2(i) {
+                edges.push(i);
+            }
+        }
+        edges
+    }
+
+    /// Return all valency 3 vertices
+    pub fn vertices_valency3(&self) -> Vec<u8> {
+        let mut edges: Vec<u8> = Vec::new();
+        for i in 0..self.num_vertices {
+            if self.has_valency3(i) {
+                edges.push(i);
+            }
+        }
+        edges
+    }
+
+    /// Return all valency vertices with valency at leas `min` and at most `max`
+    pub fn vertices_valency(&self, min: u8, max: u8) -> Vec<u8> {
+        let mut edges: Vec<u8> = Vec::new();
+        for i in 0..self.num_vertices {
+            if self.has_valency(i, min, max) {
                 edges.push(i);
             }
         }
@@ -525,6 +559,50 @@ impl Graph {
             }
         }
         i
+    }
+
+    // Returns the giths of a given graph, i.e. the size of the
+    // smallest cycle in the graph or 0 if the graph is acyclic
+    // It is expected the graph is in the bipartite format!
+    pub fn girth(&self) -> u8 {
+        if self.contains_loop() {
+            return 1;
+        }
+        if self.is_multigraph() {
+            return 2;
+        }
+        if self.num_vertices == (self.edges.len() + 1) as u8 {
+            return 0;
+        }
+
+        let graph = self.simplify(true).0;
+
+        let mut g: u8 = graph.num_vertices + 1;
+        for v in 0..graph.num_vertices {
+            let mut s: Vec<u8> = Vec::new();
+            let mut r: VecDeque<u8> = VecDeque::new();
+            r.push_back(v);
+            let mut parent: Vec<u8> = vec![graph.num_vertices + 1; graph.num_vertices as usize];
+            let mut d: Vec<u8> = vec![graph.num_vertices + 1; graph.num_vertices as usize];
+            d[v as usize] = 0;
+
+            while let Some(x) = r.pop_front() {
+                s.push(x);
+                for y in BitPositions(graph.adj[x as usize]) {
+                    if y == (parent[x as usize] as usize) {
+                        continue;
+                    }
+                    if !s.contains(&(y as u8)) {
+                        parent[y] = x;
+                        d[y] = d[x as usize] + 1;
+                        r.push_back(y as u8);
+                    } else {
+                        g = g.min(d[x as usize] + d[y as usize] + 1);
+                    }
+                }
+            }
+        }
+        return g;
     }
 
     /// Contracts the given edge, expects to be called on simple graphs!
@@ -580,6 +658,19 @@ impl Graph {
             .filter_map(|&(a, b)| Some((f(a)?, f(b)?)))
             .collect();
         (Graph::new(self.num_vertices - size + 1, edges), morphism)
+    }
+
+    /// Contracts the neighborhoods of the given vertices
+    pub fn contract_multiple_neighborhoods(&self, vertices: Vec<u8>) -> Graph {
+        let mut vert = vertices.clone();
+        let mut g = self.clone();
+
+        while let Some(v) = vert.pop() {
+            let (gr, map) = g.contract_neighborhood(v);
+            vert = compose(&vert, &map);
+            g = gr;
+        }
+        g
     }
 
     /// Turn valency 2 vertices into new edges.
