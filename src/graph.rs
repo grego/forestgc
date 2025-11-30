@@ -846,6 +846,19 @@ impl BigGraph {
         }
         (i, components)
     }
+
+    /// Is the big graph vertex connected?
+    pub fn is_vertex_connected(&mut self) -> Option<(usize, usize, Vec<usize>)> {
+        for i in 0..self.num_vertices {
+            let neigh = mem::take(&mut self.neighbours[i]);
+            let (j, c) = self.connected_components();
+            if j > 2 {
+                return Some((i, j, c));
+            }
+            self.neighbours[i] = neigh;
+        }
+        return None;
+    }
 }
 
 pub fn permute_edges(edges: &[(u8, u8)], perm: &[u8]) -> Vec<(u8, u8)> {
