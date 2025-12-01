@@ -118,6 +118,14 @@ fn main() {
     lines.pop();
     println!("Read {}", &filename);
 
+    let path = Path::new(&filename);
+    let matrix_stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or("matrix".into());
+    let new_stem = format!("pruned_{matrix_stem}");
+    let parent = path.parent().unwrap_or(Path::new("."));
+
     let t = Instant::now();
     lines.par_sort_unstable();
     println!("Sorted in {:.3}ms", t.elapsed().as_secs_f64() * 1e3);
@@ -128,6 +136,9 @@ fn main() {
         .map(|i| i.parse::<usize>().unwrap());
     let mut dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
     println!("Original dimensions: {} {}", dims[0], dims[1]);
+
+    let mut rankp = 0;
+    let dims0 = dims;
 
     loop {
         let dims0 = dims;
@@ -142,7 +153,11 @@ fn main() {
             break;
         }
     }
+    if dims0 != dims {
+        rankp += dims0[1] - dims[1];
+    }
 
+    let dims1 = dims;
     loop {
         let dims0 = dims;
         dims = prune_matrix::<1>(&mut lines, dims);
@@ -156,31 +171,65 @@ fn main() {
             break;
         }
     }
+    if dims1 != dims {
+        rankp += dims1[0] - dims[0];
+    }
 
     println!("Final dimensions: {} {}", dims[0], dims[1]);
+    {
+        let mut file = File::create(parent.join(&new_stem).with_extension("rankp")).unwrap();
+        write!(&mut file, "{rankp}").unwrap();
+    }
 
     let edges = lines
         .iter()
         .map(|&([i, j], _)| (i as usize - 1, j as usize - 1 + dims[0]))
         .collect();
     let graph = BigGraph::new(dims[0] + dims[1], edges);
-    let (c, _) = graph.connected_components();
+    let (nc, comps) = graph.connected_components();
 
-    println!("{c} block components");
+    println!("{nc} block components");
 
-    // if let Some((i, j, _)) = graph.is_vertex_connected() {
-    //     println!("removing {i} creates {j} block components");
-    // }
+    if nc > 1 {
+        for c in 1..=nc {
+            let mut remap = [vec![0; dims[0]], vec![0; dims[1]]];
+            let mut x = 0;
+            for k in 0..dims[0] {
+                if comps[k] == c {
+                    remap[0][k] = x;
+                    x += 1;
+                }
+            }
+            let mut y = 0;
+            for k in dims[0]..dims[0] + dims[1] {
+                if comps[k] == c {
+                    remap[1][k - dims[0]] = y;
+                    y += 1;
+                }
+            }
 
-    let path = Path::new(&filename);
-    let matrix_name = path
-        .file_name()
-        .map(|s| s.to_string_lossy())
-        .unwrap_or("matrix".into());
-    let new_name = format!("pruned_{matrix_name}");
-    let parent = path.parent().unwrap_or(Path::new("."));
+            let stem = format!("{new_stem}_b{c}");
+            let file = File::create(parent.join(stem).with_extension("sms")).unwrap();
+            let mut file = BufWriter::with_capacity(500_000_000, file);
+            writeln!(&mut file, "{x} {y} M").unwrap();
+            for &([i, j], s) in lines.iter() {
+                if comps[i as usize - 1] != c {
+                    continue;
+                }
+                writeln!(
+                    &mut file,
+                    "{} {} {s}",
+                    remap[0][i as usize - 1] + 1,
+                    remap[1][j as usize - 1] + 1
+                )
+                .unwrap();
+            }
+            writeln!(&mut file, "0 0 0").unwrap();
+        }
+        return;
+    }
 
-    let file = File::create(parent.join(new_name)).unwrap();
+    let file = File::create(parent.join(new_stem).with_extension("sms")).unwrap();
     let mut file = BufWriter::with_capacity(500_000_000, file);
     writeln!(&mut file, "{} {} M", dims[0], dims[1]).unwrap();
     for ([i, j], s) in lines {

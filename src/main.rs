@@ -19,6 +19,12 @@ struct Args {
     /// compute the matrices of the full graph complex instead of just trivalent graphs
     #[argh(switch, short = 'f')]
     full: bool,
+    /// compute only the dc differential
+    #[argh(switch)]
+    dc: bool,
+    /// compute the differentials for all excesses
+    #[argh(switch)]
+    all_excesses: bool,
     /// compute just the dimensions of the graph complex, for all excesses
     #[argh(switch, short = 'd')]
     dimensions: bool,
@@ -106,7 +112,13 @@ fn euler_characteristics(dims: &[Vec<usize>]) -> Vec<isize> {
     chars
 }
 
-fn compute_matrix(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matrix_name: &str) {
+fn compute_matrix(
+    graphs: &[Graph],
+    forest_size: u8,
+    matrix_dir: &str,
+    matrix_name: &str,
+    du: bool,
+) {
     let n_graphs = graphs.len();
     println!("Loaded {n_graphs} graphs");
 
@@ -117,27 +129,25 @@ fn compute_matrix(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matrix_na
 
     let start = Instant::now();
 
-    let (fgs, dus): (Vec<_>, Vec<_>) = graphs
+    let fgs: Vec<_> = graphs
         .par_iter()
-        .enumerate()
-        .map(|(_i, g)| {
-            let fc = ForestedGraph::new(g, forest_size as usize, false);
-            let du = fc.d_unmark();
-            (fc, du)
-        })
+        .map(|g| ForestedGraph::new(g, forest_size as usize, true))
         .collect();
 
-    let mut columns = 0;
     let mut durows = 0;
-    for (fg, du) in fgs.iter().zip(dus.into_iter()) {
-        for (i, j, s) in du.matrix_entries(columns, durows) {
-            writeln!(mf, "{} {} {}", i + 1, j + 1, s).unwrap();
+    if du {
+        let dus: Vec<_> = fgs.par_iter().map(ForestedGraph::d_unmark).collect();
+        let mut columns = 0;
+        for (fg, du) in fgs.iter().zip(dus.into_iter()) {
+            for (i, j, s) in du.matrix_entries(columns, durows) {
+                writeln!(mf, "{} {} {}", i + 1, j + 1, s).unwrap();
+            }
+            columns += fg.subforests().len() as u32;
+            durows += du.smaller_forests().len() as u32;
         }
-        columns += fg.subforests().len() as u32;
-        durows += du.smaller_forests().len() as u32;
+        println!("Pairs graph + subforest up to iso: {}", columns);
+        println!("du differential rows: {}", durows);
     }
-    println!("Pairs graph + subforest up to iso: {}", columns);
-    println!("du differential rows: {}", durows);
 
     let dcs: Vec<_> = fgs.into_par_iter().map(|fg| fg.d_contract()).collect();
     let graph_table = GraphTable::new(
@@ -163,7 +173,7 @@ fn compute_matrix(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matrix_na
     writeln!(mf, "0 0 0").unwrap();
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
-    write!(mf, "{} {}", durows + csum as u32, columns).unwrap();
+    write!(mf, "{} {}", durows + csum as u32, column).unwrap();
     println!("{} written", &filename);
 
     let total_time = start.elapsed();
@@ -305,23 +315,43 @@ fn main() {
     }
 
     fs::create_dir_all(&args.matrix_dir).unwrap();
-    let mcf = if args.full {
-        compute_matrix_full
-    } else {
-        compute_matrix
-    };
     let min_vertices = if args.full { 2 } else { 2 * rank - 2 };
-    let matrix_name = if args.full {
-        format!("fr{rank}")
+
+    let prefix = if !args.full && args.dc { "dc_" } else { "" };
+    let stem = if args.full {
+        "f"
+    } else if args.all {
+        "a"
     } else {
-        format!("r{rank}")
+        ""
     };
+    let matrix_name = format!("{prefix}{stem}r{rank}");
+
+    if args.all_excesses {
+        let graphs = read_all_graphs(rank, !args.all);
+        for (e, gs) in graphs.iter().rev().enumerate() {
+            let mn = format!("{matrix_name}_e{e}");
+            for d in 1..(2 * rank - 2 - e as u8) {
+                compute_matrix(gs, d, &args.matrix_dir, &mn, !args.dc);
+            }
+        }
+        return;
+    }
+
     let graphs = read_graphs(rank, min_vertices, !args.all);
     if let Some(d) = args.degree {
-        mcf(&graphs, d, &args.matrix_dir, &matrix_name);
+        if args.full {
+            compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
+        } else {
+            compute_matrix(&graphs, d, &args.matrix_dir, &matrix_name, !args.dc);
+        }
     } else {
         for d in ((4 * rank) / 5)..(2 * rank - 2) {
-            mcf(&graphs, d, &args.matrix_dir, &matrix_name);
+            if args.full {
+                compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
+            } else {
+                compute_matrix(&graphs, d, &args.matrix_dir, &matrix_name, !args.dc);
+            }
         }
     }
 }
