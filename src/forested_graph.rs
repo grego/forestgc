@@ -211,6 +211,10 @@ impl ForestedGraph {
     pub fn subforests(&self) -> &[u64] {
         &self.subforests
     }
+
+    pub fn graph(&self) -> &Graph {
+        &self.graph
+    }
 }
 
 impl UnmarkDifferential {

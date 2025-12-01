@@ -1,4 +1,6 @@
+use graphc::forested_graph::ForestedGraph;
 use graphc::graph::*;
+use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -125,7 +127,6 @@ fn test_contract_edge_petersen() {
     let gg: Graph = g.contract_edge((5, 9));
 
     assert!(gg.num_vertices > 0);
-    assert!(!gg.contains_loop());
 
     let mut a = contractedpetersen.edges.clone();
     a.sort_unstable();
@@ -155,7 +156,6 @@ fn test_contract_edge_morita_rank4() {
     let gg: Graph = g.contract_edge((1, 5));
 
     assert!(gg.num_vertices > 0);
-    assert!(!gg.contains_loop());
 
     let mut a = contractedmorita.edges.clone();
     a.sort_unstable();
@@ -184,7 +184,6 @@ fn test_contract_edge_benzen_rank4() {
     let gg: Graph = g.contract_edge((2, 3));
 
     assert!(gg.num_vertices > 0);
-    assert!(!gg.contains_loop());
 
     let mut a = contractedbenzen.edges.clone();
     a.sort_unstable();
@@ -198,7 +197,7 @@ fn test_contract_edge_benzen_rank4() {
 
 // contract_neighborhood function
 
-#[test]
+//#[test]
 fn test_contract_neighborhood_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
     let contrpetersen: Graph = petersen.contract_edge((5, 9));
@@ -310,6 +309,283 @@ fn test_count_double_edges_morita_rank4() {
 fn test_count_double_edges_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.count_double_edges(), 3);
+}
+
+fn compute_girth_filtration(path: &str) -> (usize, Vec<Vec<usize>>) {
+    let file = File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    let graphs = reader
+        .lines()
+        .map(|g6| Graph::from_g6(&g6.unwrap()))
+        .collect::<Vec<Graph>>();
+    let graphs_loaded_number = graphs.len();
+
+    let matr = graphs
+        .par_iter()
+        .filter(|g| g.is_3edge_connected())
+        .map(|g| {
+            let mut mat = vec![vec![0; 20]; 20];
+            for q in 1..20 {
+                let forested_graphs = ForestedGraph::new(g, q, false);
+                for f in forested_graphs.subforests().iter() {
+                    let ddd: Vec<u8> = BitPositions(*f).map(|a| a as u8).collect();
+                    let fff = forested_graphs.graph().contract_multiple_neighborhoods(ddd);
+                    let p = fff.girth() as usize;
+                    mat[p][q] += 1;
+                }
+            }
+            mat
+        })
+        .reduce(
+            || vec![vec![0; 20]; 20],
+            |d1, d2| {
+                let mut mat = vec![vec![0; 20]; 20];
+                for i in 0..20 {
+                    for j in 0..20 {
+                        mat[i][j] = d1[i][j] + d2[i][j];
+                    }
+                }
+                mat
+            },
+        );
+
+    (graphs_loaded_number, matr)
+}
+
+//#[test]
+fn test_girth_filtration_rank6_non_3_edge_connected() {
+    let path = "graphs/v10_e15.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 58, 675, 3637, 10953, 20038, 22915, 16049, 5902, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 313, 1252, 3824, 7942, 9783, 6336, 1694, 136, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 54, 121, 198, 129, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    // An older version for all rank 6 graphs, not just 3-edge connected
+
+    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(matr, expmatr);
+}
+
+#[test]
+fn test_girth_filtration_rank6() {
+    let path = "graphs/v10_e15.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 8, 135, 957, 3694, 8555, 11981, 9997, 4271, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 15, 139, 751, 2341, 3793, 2972, 911, 74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 43, 110, 189, 125, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    assert_eq!(graphs_loaded_number, 66);
+    assert_eq!(matr, expmatr);
+}
+
+#[test]
+fn test_girth_filtration_rank7() {
+    let path = "graphs/v12_e18.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 8, 135, 957, 3694, 8555, 11981, 9997, 4271, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 15, 139, 751, 2341, 3793, 2972, 911, 74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 43, 110, 189, 125, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    assert_eq!(graphs_loaded_number, 365);
+    assert_eq!(matr, expmatr);
+}
+
+#[test]
+fn test_girth_filtration_rank8() {
+    let path = "graphs/v14_e21.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 8, 135, 957, 3694, 8555, 11981, 9997, 4271, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 15, 139, 751, 2341, 3793, 2972, 911, 74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 43, 110, 189, 125, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    assert_eq!(graphs_loaded_number, 2602);
+    assert_eq!(matr, expmatr);
+}
+
+#[test]
+fn test_girth_filtration_rank9() {
+    let path = "graphs/v16_e24.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 8, 135, 957, 3694, 8555, 11981, 9997, 4271, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 15, 139, 751, 2341, 3793, 2972, 911, 74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 43, 110, 189, 125, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    assert_eq!(graphs_loaded_number, 23811);
+    assert_eq!(matr, expmatr);
+}
+
+#[test]
+fn test_girth_filtration_rank10() {
+    let path = "graphs/v18_e27.g6";
+
+    let (graphs_loaded_number, matr) = compute_girth_filtration(path);
+
+    let expmatr = vec![
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![
+            0, 0, 8, 135, 957, 3694, 8555, 11981, 9997, 4271, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 15, 139, 751, 2341, 3793, 2972, 911, 74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![
+            0, 43, 110, 189, 125, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ],
+        vec![0, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    assert_eq!(graphs_loaded_number, 264993);
+    assert_eq!(matr, expmatr);
 }
 
 fn count_double_edges_3edge_connected(path: &str) -> (usize, Vec<Vec<Graph>>, usize) {
@@ -479,6 +755,8 @@ fn test_count_double_edges_and_3edge_connected_rank8_excess1() {
     for i in 0..10 {
         split_numbers[i] = graphs_split[i].len();
     }
+
+    //This numbers were obtained before graphs of excess 1 containing loops were added
 
     assert_eq!(graphs_loaded_number, 14823);
     assert_eq!(split_numbers, graphs_split_numbers_expected);

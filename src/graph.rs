@@ -244,15 +244,6 @@ impl Graph {
         let gcanon = self.permute(&perms[0]);
         (gcanon, perms)
     }
-    /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
-    pub fn contains_loop(&self) -> bool {
-        for (v1, v2) in self.edges.iter() {
-            if v1 == v2 {
-                return true;
-            }
-        }
-        false
-    }
 
     /// Returns wheter a graph is isomorphic to the given graph
     pub fn is_isomorphic_to(&self, graph: &Graph) -> bool {
@@ -539,6 +530,14 @@ impl Graph {
         edges
     }
 
+    /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
+    /// Only works on graphs in the bipartite form
+    pub fn contains_loop(&self) -> bool {
+        self.vertices_valency(1, 1).iter().count() != 0
+    }
+
+    /// Returns whether a graph contains a pair of vertices with more then one edge between them
+    /// Only works on graphs in the bipartite form
     pub fn is_multigraph(&self) -> bool {
         let mut seen = FxHashSet::default();
         for item in &self.adj {
