@@ -518,7 +518,7 @@ impl Graph {
         edges
     }
 
-    /// Return all valency vertices with valency at leas `min` and at most `max`
+    /// Return all vertices with valency at leas `min` and at most `max`
     pub fn vertices_valency(&self, min: u8, max: u8) -> Vec<u8> {
         let mut edges: Vec<u8> = Vec::new();
         for i in 0..self.num_vertices {
@@ -532,7 +532,7 @@ impl Graph {
     /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
     /// Only works on graphs in the bipartite form
     pub fn contains_loop(&self) -> bool {
-        self.vertices_valency(1, 1).is_empty()
+        !self.vertices_valency(1, 1).is_empty()
     }
 
     /// Returns whether a graph contains a pair of vertices with more then one edge between them
@@ -659,8 +659,8 @@ impl Graph {
     }
 
     /// Contracts the neighborhoods of the given vertices
-    pub fn contract_multiple_neighborhoods(&self, vertices: Vec<u8>) -> Graph {
-        let mut vert = vertices.clone();
+    pub fn contract_multiple_neighborhoods(&self, vertices: &[u8]) -> Graph {
+        let mut vert = vertices.to_vec();
         let mut g = self.clone();
 
         while let Some(v) = vert.pop() {
@@ -837,9 +837,6 @@ impl Graph {
     /// Returns whether a graph is 3-edge connected
     /// Expected to be called on simple 3 valent graph only and in the bipartite form!
     pub fn is_3edge_connected(&self) -> bool {
-        // if self.is_multigraph() {
-        //     return false;
-        // }
         let edges = self.vertices_valency2();
 
         for e1 in edges.iter() {
@@ -867,9 +864,7 @@ impl Graph {
         if !self.is_k_edge_connected(k - 1, proper) {
             return false;
         }
-        // if self.is_multigraph() {
-        //     return false;
-        // }
+
         let edges = self.vertices_valency2();
         let ktuples = get_ktuples(&edges, k - 1);
 
@@ -892,6 +887,25 @@ impl Graph {
             }
         }
 
+        true
+    }
+
+    /// Returns whether a graph is 3-edge connected
+    /// Expected to be called on simple 3 valent graph only and in the bipartite form!
+    pub fn is_3vertex_connected(&self) -> bool {
+        let vertices = self.vertices_valency(3, 255);
+
+        for e1 in vertices.iter() {
+            for e2 in vertices.iter() {
+                if e1 <= e2 {
+                    continue;
+                }
+                let g = self.remove_vertex(*e1).remove_vertex(*e2);
+                if g.connected_components().0 > 1 {
+                    return false;
+                }
+            }
+        }
         true
     }
 }
