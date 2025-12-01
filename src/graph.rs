@@ -1,6 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::{BTreeMap, VecDeque, vec_deque};
-use std::i16::MIN;
+use std::collections::{BTreeMap, VecDeque};
 use std::mem;
 
 type HashType = u128;
@@ -533,7 +532,7 @@ impl Graph {
     /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
     /// Only works on graphs in the bipartite form
     pub fn contains_loop(&self) -> bool {
-        self.vertices_valency(1, 1).iter().count() != 0
+        self.vertices_valency(1, 1).is_empty()
     }
 
     /// Returns whether a graph contains a pair of vertices with more then one edge between them
@@ -596,12 +595,12 @@ impl Graph {
                         d[y] = d[x as usize] + 1;
                         r.push_back(y as u8);
                     } else {
-                        g = g.min(d[x as usize] + d[y as usize] + 1);
+                        g = g.min(d[x as usize] + d[y] + 1);
                     }
                 }
             }
         }
-        return g;
+        g
     }
 
     /// Contracts the given edge, expects to be called on simple graphs!
@@ -947,7 +946,7 @@ impl BigGraph {
             }
             self.neighbours[i] = neigh;
         }
-        return None;
+        None
     }
 }
 

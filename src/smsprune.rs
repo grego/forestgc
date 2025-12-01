@@ -40,36 +40,43 @@ fn prune_matrix<const BY_COLUMNS: usize>(
         }
     }
 
-    let mut row_shift: Vec<u32> = (0..h as u32).collect();
-    let mut col_shift: Vec<u32> = (0..w as u32).collect();
     let mut shift = 0;
     for i in 0..h {
         if indices[0][i] == 1 {
             shift += 1;
+            indices[0][i] = u32::MAX;
         } else if BY_COLUMNS == 0 && indices[0][i] == 0 {
             ones += 1;
             shift += 1;
+            indices[0][i] = u32::MAX;
+        } else {
+            indices[0][i] = i as u32 - shift;
         }
-        row_shift[i] -= shift;
     }
     let mut shift = 0;
     for i in 0..w {
         if indices[1][i] == 1 {
             shift += 1;
+            indices[1][i] = u32::MAX;
         } else if BY_COLUMNS == 1 && indices[1][i] == 0 {
             ones += 1;
             shift += 1;
+            indices[1][i] = u32::MAX;
+        } else {
+            indices[1][i] = i as u32 - shift;
         }
-        col_shift[i] -= shift;
     }
 
     let mb = mem::take(m);
     *m = mb
         .into_par_iter()
         .filter_map(|([i, j], s)| {
-            if indices[0][i as usize - 1] != 1 && indices[1][j as usize - 1] != 1 {
+            if indices[0][i as usize - 1] != u32::MAX && indices[1][j as usize - 1] != u32::MAX {
                 Some((
-                    [row_shift[i as usize - 1] + 1, col_shift[j as usize - 1] + 1],
+                    [
+                        indices[0][i as usize - 1] + 1,
+                        indices[1][j as usize - 1] + 1,
+                    ],
                     s,
                 ))
             } else {
@@ -160,6 +167,10 @@ fn main() {
     let (c, _) = graph.connected_components();
 
     println!("{c} block components");
+
+    // if let Some((i, j, _)) = graph.is_vertex_connected() {
+    //     println!("removing {i} creates {j} block components");
+    // }
 
     let path = Path::new(&filename);
     let matrix_name = path
