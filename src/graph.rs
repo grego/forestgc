@@ -734,6 +734,9 @@ impl Graph {
         let mut component_masks: Vec<_> = (0..self.num_vertices).map(|i| 1_u64 << i).collect();
         let mut stack: Vec<(_, _, _, u64)> = Vec::with_capacity(self.num_vertices as usize - 1);
         let mut output = Vec::new();
+        if min_edges == 0 {
+            output.push(Vec::with_capacity(0));
+        }
 
         let mut i = 0;
         loop {
@@ -865,11 +868,17 @@ impl Graph {
             return false;
         }
 
+        let hairs = self.vertices_valency(1, 1);
+        let mut g = self.clone();
+        for &h in hairs.iter().rev() {
+            g = g.remove_vertex(h);
+        }
+
         let edges = self.vertices_valency2();
         let ktuples = get_ktuples(&edges, k - 1);
 
         'outer: for kt in ktuples {
-            let mut g = self.clone();
+            let mut g = g.clone();
             for &v in kt.iter().rev() {
                 g = g.remove_vertex(v);
             }

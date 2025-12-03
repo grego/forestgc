@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 
 use graphc::forested_graph::{ForestedGraph, GraphTable};
-use graphc::graph::Graph;
+use graphc::graph::{BitPositions, Graph};
 
 use argh::FromArgs;
 use std::fs::{self, File};
@@ -76,7 +76,6 @@ fn compute_dimensions(graphs: &[Vec<Graph>]) -> Vec<Vec<usize>> {
             .par_iter()
             .map(|g| {
                 let mut dims = vec![0; i + 2];
-                dims[0] += 1;
                 let sfs = ForestedGraph::all(g);
                 for m in sfs.subforests() {
                     dims[m.count_ones() as usize] += 1;
@@ -131,7 +130,10 @@ fn compute_matrix(
 
     let fgs: Vec<_> = graphs
         .par_iter()
-        .map(|g| ForestedGraph::new(g, forest_size as usize, true))
+        .map(|g| {
+            let fg = ForestedGraph::new(g, forest_size as usize, true);
+            fg
+        })
         .collect();
 
     let mut durows = 0;

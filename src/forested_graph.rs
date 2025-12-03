@@ -95,7 +95,7 @@ impl ForestedGraph {
     }
     /// Find all subforests, up to isomorphism, of the graph.
     pub fn all(g: &Graph) -> Self {
-        Self::in_range(g, 1, g.num_vertices as usize - 1, true)
+        Self::in_range(g, 0, g.num_vertices as usize - 1, true)
     }
 
     /// Create a new forested graph with only the provided subforests.
@@ -214,6 +214,17 @@ impl ForestedGraph {
 
     pub fn graph(&self) -> &Graph {
         &self.graph
+    }
+
+    /// Keep only the subforests that satisfy the given predicate.
+    pub fn filter<F: Fn(u64) -> bool>(&self, f: F) -> Self {
+        let subforests = self.subforests.iter().copied().filter(|u| f(*u)).collect();
+        Self {
+            subforests,
+            graph: self.graph.clone(),
+            perms: self.perms.clone(),
+            edges: self.edges,
+        }
     }
 }
 
