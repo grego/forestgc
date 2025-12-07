@@ -226,6 +226,22 @@ impl ForestedGraph {
             edges: self.edges,
         }
     }
+
+    /// Returns the girth of the graph after contracting the given forest
+    pub fn girth(&self, forest: u64) -> u8 {
+        let ddd: Vec<u8> = BitPositions(forest).map(|a| a as u8).collect();
+        let fff = self.graph().contract_multiple_neighborhoods(&ddd);
+        let p = fff.girth();
+        p
+    }
+
+    /// Return the number of loops in the graph after contracting the given forest
+    pub fn loops(&self, forest: u64) -> u8 {
+        let ddd: Vec<u8> = BitPositions(forest).map(|a| a as u8).collect();
+        let fff = self.graph().contract_multiple_neighborhoods(&ddd);
+        let p = fff.vertices_valency(1, 1).len() as u8;
+        p
+    }
 }
 
 impl UnmarkDifferential {
@@ -313,9 +329,9 @@ impl GraphTable {
         self.forests.len()
     }
 
-    pub fn get_index(&self, g: &str, forest: u64) -> usize {
-        let &index = &self.graphs.get(g).unwrap();
-        self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index]
+    pub fn get_index(&self, g: &str, forest: u64) -> Option<usize> {
+        let &index = &self.graphs.get(g)?;
+        Some(self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index])
     }
 }
 

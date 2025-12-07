@@ -77,7 +77,8 @@ fn compute_dimensions(graphs: &[Vec<Graph>]) -> Vec<Vec<usize>> {
             .map(|g| {
                 let mut dims = vec![0; i + 2];
                 let sfs = ForestedGraph::all(g);
-                for m in sfs.subforests() {
+                let s = sfs.filter(|f| sfs.girth(f) > 0);
+                for m in s.subforests() {
                     dims[m.count_ones() as usize] += 1;
                 }
                 dims
@@ -132,7 +133,8 @@ fn compute_matrix(
         .par_iter()
         .map(|g| {
             let fg = ForestedGraph::new(g, forest_size as usize, true);
-            fg
+            let g = fg.filter(|f| fg.girth(f) > 0);
+            g
         })
         .collect();
 
@@ -155,6 +157,7 @@ fn compute_matrix(
     let graph_table = GraphTable::new(
         dcs.iter()
             .flat_map(|dc| dc.contracted_graphs())
+            // .map(|(g, fs)| {})
             .map(|(g, fs)| (g.as_str(), fs.as_slice())),
     );
     let csum = graph_table.size();
@@ -166,8 +169,10 @@ fn compute_matrix(
         for entries in dc.columns() {
             for ((i, m), s) in entries {
                 let (g, _) = &dc.contracted_graphs()[*i];
-                let j = graph_table.get_index(g, *m) + durows as usize;
-                writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
+                let Some(j) = graph_table.get_index(g, *m) else {
+                    continue;
+                };
+                writeln!(mf, "{} {} {}", j + durows as usize + 1, column + 1, s).unwrap();
             }
             column += 1;
         }
@@ -208,9 +213,10 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
         .enumerate()
         .map(|(_i, g)| {
             let fc = ForestedGraph::new(g, forest_size as usize, true);
-            let du = fc.d_unmark();
-            let dc = fc.d_contract();
-            (fc, (du, dc))
+            let g = fc.filter(|f| fc.girth(f) > 0);
+            let du = g.d_unmark();
+            let dc = g.d_contract();
+            (g, (du, dc))
         })
         .collect();
 
@@ -220,15 +226,31 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
     }
     println!("Pairs graph + subforest up to iso: {}", columns);
 
+    let sfgs: Vec<_> = g6s
+        .iter()
+        .map(|s| s.as_str())
+        .zip(dus.iter().map(|du| du.smaller_forests()))
+        .map(|(g, fg)| {
+            let fr: Vec<u64> = fg
+                .iter()
+                .filter(|&&f| {
+                    let graph = Graph::from_g6(g);
+                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                    let gr = graph.contract_multiple_neighborhoods(&forest);
+                    let p = gr.girth();
+                    p > 0
+                })
+                .copied()
+                .collect();
+            (g, fr)
+        })
+        .collect();
     let graph_table = GraphTable::new(
-        g6s.iter()
-            .map(|s| s.as_str())
-            .zip(dus.iter().map(|du| du.smaller_forests()))
-            .chain(
-                dcs.iter()
-                    .flat_map(|dc| dc.contracted_graphs())
-                    .map(|(g, fs)| (g.as_str(), fs.as_slice())),
-            ),
+        sfgs.iter().map(|(s, v)| (*s, v.as_slice())).chain(
+            dcs.iter()
+                .flat_map(|dc| dc.contracted_graphs())
+                .map(|(g, fs)| (g.as_str(), fs.as_slice())),
+        ),
     );
     let csum = graph_table.size();
     println!("du + dc differential rows: {}", csum);
@@ -238,7 +260,9 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
     for (g6, du) in g6s.iter().zip(dus.iter()) {
         for entries in du.columns() {
             for (m, s) in entries {
-                let j = graph_table.get_index(g6, *m);
+                let Some(j) = graph_table.get_index(g6, *m) else {
+                    continue;
+                };
                 writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
             }
             column += 1;
@@ -249,7 +273,9 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
         for entries in dc.columns() {
             for ((i, m), s) in entries {
                 let (g, _) = &dc.contracted_graphs()[*i];
-                let j = graph_table.get_index(g, *m);
+                let Some(j) = graph_table.get_index(g, *m) else {
+                    continue;
+                };
                 writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
             }
             column += 1;
