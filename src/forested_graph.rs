@@ -250,11 +250,20 @@ impl UnmarkDifferential {
         row_shift: u32,
     ) -> impl Iterator<Item = (u32, u32, i8)> {
         self.columns.iter().enumerate().flat_map(move |(i, c)| {
-            c.iter().map(move |(m, s)| {
-                let j = self.smaller_forests.binary_search(m).unwrap();
-                (j as u32 + row_shift, i as u32 + col_shift, *s)
+            c.iter().flat_map(move |(m, s)| {
+                let j = self.smaller_forests.binary_search(m).ok()?;
+                Some((j as u32 + row_shift, i as u32 + col_shift, *s))
             })
         })
+    }
+
+    /// Filter the smaller forests by the provided predicate.
+    pub fn filter<F: Fn(u64) -> bool>(self, f: F) -> Self {
+        let smaller_forests = self.smaller_forests.into_iter().filter(|u| f(*u)).collect();
+        Self {
+            smaller_forests,
+            columns: self.columns,
+        }
     }
 }
 
@@ -318,7 +327,7 @@ impl GraphTable {
 
     pub fn get_index(&self, g: &str, forest: u64) -> Option<usize> {
         let &index = &self.graphs.get(g)?;
-        Some(self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index])
+        Some(self.forests[*index].binary_search(&forest).ok()? + self.indices[*index])
     }
 }
 
