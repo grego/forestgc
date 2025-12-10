@@ -161,8 +161,12 @@ fn compute_matrix(
         let dus: Vec<_> = fgs
             .par_iter()
             .map(|g| {
-                let du = ForestedGraph::d_unmark(g);
-                // g.graph().contract_multiple_neighborhoods(vertices)
+                let du = ForestedGraph::d_unmark(g).filter(|f| {
+                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                    let gr = g.graph().contract_multiple_neighborhoods(&forest);
+                    let p = gr.girth();
+                    p > 0
+                });
                 du
             })
             .collect();
