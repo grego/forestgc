@@ -5,7 +5,7 @@ use graphc::graph::{BitPositions, Graph};
 
 use argh::FromArgs;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::io::{BufWriter, Write};
 use std::time::Instant;
 
@@ -19,9 +19,15 @@ struct Args {
     /// compute the matrices of the full graph complex instead of just trivalent graphs
     #[argh(switch, short = 'f')]
     full: bool,
-    /// compute only the dc differential
+    /// compute the dc differential
     #[argh(switch)]
     dc: bool,
+    /// compute the du differential
+    #[argh(switch)]
+    du: bool,
+    /// compute the registry for row and column indices in the generated matrix
+    #[argh(switch)]
+    registry: bool,
     /// compute the differentials for all excesses
     #[argh(switch)]
     all_excesses: bool,
@@ -118,6 +124,8 @@ fn compute_matrix(
     matrix_dir: &str,
     matrix_name: &str,
     du: bool,
+    dc: bool,
+    registry: bool,
 ) {
     let n_graphs = graphs.len();
     println!("Loaded {n_graphs} graphs");
@@ -138,11 +146,27 @@ fn compute_matrix(
         })
         .collect();
 
+    if registry {
+        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.cols");
+        let mf = File::create(&filename).unwrap();
+        let mut mf = BufWriter::new(mf);
+        for fg in &fgs {
+            writeln!(mf, "{fg}").unwrap();
+        }
+    }
+
     let mut durows = 0;
+    let mut columns = 0;
     if du {
-        let dus: Vec<_> = fgs.par_iter().map(ForestedGraph::d_unmark).collect();
-        let mut columns = 0;
-        for (fg, du) in fgs.iter().zip(dus.into_iter()) {
+        let dus: Vec<_> = fgs
+            .par_iter()
+            .map(|g| {
+                let du = ForestedGraph::d_unmark(g);
+                // g.graph().contract_multiple_neighborhoods(vertices)
+                du
+            })
+            .collect();
+        for (fg, du) in fgs.iter().zip(dus.iter()) {
             for (i, j, s) in du.matrix_entries(columns, durows) {
                 writeln!(mf, "{} {} {}", i + 1, j + 1, s).unwrap();
             }
@@ -151,36 +175,56 @@ fn compute_matrix(
         }
         println!("Pairs graph + subforest up to iso: {}", columns);
         println!("du differential rows: {}", durows);
-    }
 
-    let dcs: Vec<_> = fgs.into_par_iter().map(|fg| fg.d_contract()).collect();
-    let graph_table = GraphTable::new(
-        dcs.iter()
-            .flat_map(|dc| dc.contracted_graphs())
-            // .map(|(g, fs)| {})
-            .map(|(g, fs)| (g.as_str(), fs.as_slice())),
-    );
-    let csum = graph_table.size();
-    println!("dc differential rows: {}", csum);
-    println!("Number of contracted graphs: {}", graph_table.num_graphs());
-
-    let mut column = 0;
-    for dc in &dcs {
-        for entries in dc.columns() {
-            for ((i, m), s) in entries {
-                let (g, _) = &dc.contracted_graphs()[*i];
-                let Some(j) = graph_table.get_index(g, *m) else {
-                    continue;
-                };
-                writeln!(mf, "{} {} {}", j + durows as usize + 1, column + 1, s).unwrap();
+        if registry {
+            let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
+            let mf = File::create(&filename).unwrap();
+            let mut mf = BufWriter::new(mf);
+            for (fg, du) in fgs.iter().zip(dus.into_iter()) {
+                writeln!(mf, "{} {du}", fg.graph()).unwrap();
             }
-            column += 1;
         }
     }
+
+    let mut csum = 0;
+    if dc {
+        let dcs: Vec<_> = fgs.into_par_iter().map(|fg| fg.d_contract()).collect();
+        let graph_table = GraphTable::new(
+            dcs.iter()
+                .flat_map(|dc| dc.contracted_graphs())
+                .map(|(g, fs)| (g.as_str(), fs.as_slice())),
+        );
+        csum = graph_table.size();
+        println!("dc differential rows: {}", csum);
+        println!("Number of contracted graphs: {}", graph_table.num_graphs());
+
+        columns = 0;
+        for dc in &dcs {
+            for entries in dc.columns() {
+                for ((i, m), s) in entries {
+                    let (g, _) = &dc.contracted_graphs()[*i];
+                    let Some(j) = graph_table.get_index(g, *m) else {
+                        continue;
+                    };
+                    writeln!(mf, "{} {} {}", j + durows as usize + 1, columns + 1, s).unwrap();
+                }
+                columns += 1;
+            }
+        }
+
+        if registry {
+            let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
+            let mut mf = File::options().write(true).open(&filename).unwrap();
+            mf.seek(SeekFrom::End(0)).unwrap();
+            let mut mf = BufWriter::new(mf);
+            writeln!(mf, "{}", graph_table).unwrap();
+        }
+    }
+
     writeln!(mf, "0 0 0").unwrap();
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
-    write!(mf, "{} {}", durows + csum as u32, column).unwrap();
+    write!(mf, "{} {}", durows + csum as u32, columns).unwrap();
     println!("{} written", &filename);
 
     let total_time = start.elapsed();
@@ -345,7 +389,13 @@ fn main() {
     fs::create_dir_all(&args.matrix_dir).unwrap();
     let min_vertices = if args.full { 2 } else { 2 * rank - 2 };
 
-    let prefix = if !args.full && args.dc { "dc_" } else { "" };
+    let prefix = if !args.full && args.dc && !args.du {
+        "dc_"
+    } else if !args.full && args.du && !args.dc {
+        "du_"
+    } else {
+        ""
+    };
     let stem = if args.full {
         "f"
     } else if args.all {
@@ -360,7 +410,15 @@ fn main() {
         for (e, gs) in graphs.iter().rev().enumerate() {
             let mn = format!("{matrix_name}_e{e}");
             for d in 1..(2 * rank - 2 - e as u8) {
-                compute_matrix(gs, d, &args.matrix_dir, &mn, !args.dc);
+                compute_matrix(
+                    gs,
+                    d,
+                    &args.matrix_dir,
+                    &mn,
+                    !args.dc,
+                    !args.du,
+                    args.registry,
+                );
             }
         }
         return;
@@ -371,14 +429,30 @@ fn main() {
         if args.full {
             compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
         } else {
-            compute_matrix(&graphs, d, &args.matrix_dir, &matrix_name, !args.dc);
+            compute_matrix(
+                &graphs,
+                d,
+                &args.matrix_dir,
+                &matrix_name,
+                !args.dc,
+                !args.du,
+                args.registry,
+            );
         }
     } else {
         for d in ((4 * rank) / 5)..(2 * rank - 2) {
             if args.full {
                 compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
             } else {
-                compute_matrix(&graphs, d, &args.matrix_dir, &matrix_name, !args.dc);
+                compute_matrix(
+                    &graphs,
+                    d,
+                    &args.matrix_dir,
+                    &matrix_name,
+                    !args.dc,
+                    !args.du,
+                    args.registry,
+                );
             }
         }
     }
