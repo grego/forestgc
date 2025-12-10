@@ -279,12 +279,12 @@ impl ContractDifferential {
 
 impl GraphTable {
     /// Create a new graphtable from an iterator of a graph G6 string and a list of subforests.
-    pub fn new<'a>(iter: impl Iterator<Item = (&'a str, &'a [u64])>) -> Self {
+    pub fn new<'a>(iter: impl Iterator<Item = (String, &'a [u64])>) -> Self {
         let mut num = 0;
         let mut graphs = FxHashMap::default();
         let mut forest_sets = Vec::new();
         for (g, fs) in iter {
-            let j = graphs.entry(g.to_string()).or_insert_with(|| {
+            let j = graphs.entry(g).or_insert_with(|| {
                 forest_sets.push(FxHashSet::default());
                 num += 1;
                 num - 1
@@ -307,6 +307,28 @@ impl GraphTable {
         for i in 0..num {
             sum += forests[i].len();
             indices[i + 1] = sum;
+        }
+        Self {
+            graphs,
+            forests,
+            indices,
+        }
+    }
+
+    /// Make a graph indexing table from the provided list of forested graphs.
+    pub fn from_forested_graphs(fgs: Vec<ForestedGraph>) -> Self {
+        let (mut graphs, mut forests, mut indices) = (
+            FxHashMap::default(),
+            Vec::with_capacity(fgs.len()),
+            Vec::with_capacity(fgs.len() + 1),
+        );
+        indices.push(0);
+        let mut sum = 0;
+        for (i, fg) in fgs.into_iter().enumerate() {
+            graphs.insert(fg.graph.to_g6(), i);
+            sum += fg.subforests.len();
+            indices.push(sum);
+            forests.push(fg.subforests);
         }
         Self {
             graphs,
@@ -339,10 +361,14 @@ impl GraphTable {
 pub fn canonical_subforest(mask: u64, perms: &[Vec<u8>]) -> Option<(u64, i8)> {
     let mut cm = mask;
     let mut sign = 1;
+    let mut _autos = 1;
     for perm in perms {
         let m = permute_mask(mask, perm);
-        if m == mask && sign_subset(perm, BitPositions(mask)) == -1 {
-            return None;
+        if m == mask {
+            if sign_subset(perm, BitPositions(mask)) == -1 {
+                return None;
+            }
+            _autos += 1;
         } else if m < cm {
             cm = m;
             sign = sign_subset(perm, BitPositions(mask));

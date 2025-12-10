@@ -37,6 +37,9 @@ struct Args {
     /// compute the complex with one hair
     #[argh(switch)]
     hairy: bool,
+    /// compute the complex with one hair
+    #[argh(switch, short = 'T')]
+    transpose: bool,
     /// the directory where the matrices will be output
     #[argh(option, short = 'm', default = "String::from(\"matrices\")")]
     matrix_dir: String,
@@ -149,7 +152,7 @@ fn compute_matrix(
         let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.cols");
         let mf = File::create(&filename).unwrap();
         let mut mf = BufWriter::new(mf);
-        for fg in &fgs {
+        for fg in fgs.iter().filter(|g| !g.subforests().is_empty()) {
             writeln!(mf, "{fg}").unwrap();
         }
     }
@@ -184,7 +187,7 @@ fn compute_matrix(
         let graph_table = GraphTable::new(
             dcs.iter()
                 .flat_map(|dc| dc.contracted_graphs())
-                .map(|(g, fs)| (g.as_str(), fs.as_slice())),
+                .map(|(g, fs)| (g.clone(), fs.as_slice())),
         );
         csum = graph_table.size();
         println!("dc differential rows: {}", csum);
@@ -229,7 +232,15 @@ fn compute_matrix(
     println!();
 }
 
-fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matrix_name: &str) {
+fn compute_matrix_full(
+    graphs: &[Graph],
+    forest_size: u8,
+    matrix_dir: &str,
+    matrix_name: &str,
+    graph_table: Option<GraphTable>,
+    transpose: bool,
+    registry: bool,
+) {
     let n_graphs = graphs.len();
     let g6s: Vec<_> = graphs
         .iter()
@@ -237,7 +248,8 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
         .collect();
     println!("Loaded {n_graphs} graphs");
 
-    let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.sms");
+    let t = if transpose { "T" } else { "" };
+    let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}{t}.sms");
     let mf = File::create(&filename).unwrap();
     let mut mf = BufWriter::new(mf);
     writeln!(mf, "{}M", " ".repeat(24)).unwrap();
@@ -261,16 +273,18 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
     }
     println!("Pairs graph + subforest up to iso: {}", columns);
 
-    let graph_table = GraphTable::new(
-        g6s.iter()
-            .map(|s| s.as_str())
-            .zip(dus.iter().map(|du| du.smaller_forests()))
-            .chain(
-                dcs.iter()
-                    .flat_map(|dc| dc.contracted_graphs())
-                    .map(|(g, fs)| (g.as_str(), fs.as_slice())),
-            ),
-    );
+    let graph_table = graph_table.unwrap_or_else(|| {
+        GraphTable::new(
+            fgs.iter()
+                .map(|g| g.graph().to_g6())
+                .zip(dus.iter().map(|du| du.smaller_forests()))
+                .chain(
+                    dcs.iter()
+                        .flat_map(|dc| dc.contracted_graphs())
+                        .map(|(g, fs)| (g.clone(), fs.as_slice())),
+                ),
+        )
+    });
     let csum = graph_table.size();
     println!("du + dc differential rows: {}", csum);
     println!("Number of target graphs: {}", graph_table.num_graphs());
@@ -282,7 +296,11 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
                 let Some(j) = graph_table.get_index(g6, *m) else {
                     continue;
                 };
-                writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
+                if transpose {
+                    writeln!(mf, "{} {} {}", column + 1, j + 1, s).unwrap();
+                } else {
+                    writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
+                }
             }
             column += 1;
         }
@@ -295,7 +313,11 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
                 let Some(j) = graph_table.get_index(g, *m) else {
                     continue;
                 };
-                writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
+                if transpose {
+                    writeln!(mf, "{} {} {}", column + 1, j + 1, s).unwrap();
+                } else {
+                    writeln!(mf, "{} {} {}", j + 1, column + 1, s).unwrap();
+                }
             }
             column += 1;
         }
@@ -303,8 +325,26 @@ fn compute_matrix_full(graphs: &[Graph], forest_size: u8, matrix_dir: &str, matr
     writeln!(mf, "0 0 0").unwrap();
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
-    write!(mf, "{} {}", csum as u32, columns).unwrap();
+    if transpose {
+        write!(mf, "{} {}", columns, csum as u32).unwrap();
+    } else {
+        write!(mf, "{} {}", csum as u32, columns).unwrap();
+    }
     println!("{} written", &filename);
+
+    if registry {
+        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.cols");
+        let mf = File::create(&filename).unwrap();
+        let mut mf = BufWriter::new(mf);
+        for fg in fgs.iter().filter(|g| !g.subforests().is_empty()) {
+            writeln!(mf, "{fg}").unwrap();
+        }
+
+        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
+        let mf = File::create(&filename).unwrap();
+        let mut mf = BufWriter::new(mf);
+        writeln!(mf, "{}", graph_table).unwrap();
+    }
 
     let total_time = start.elapsed();
     println!("---");
@@ -420,7 +460,20 @@ fn main() {
         .unwrap_or_else(|| (min_degree..max_vertices).collect());
     for d in degrees {
         if args.full {
-            compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
+            let fgs: Vec<_> = graphs
+                .par_iter()
+                .map(|g| ForestedGraph::new(g, d as usize - 1, true))
+                .collect();
+            let gt = GraphTable::from_forested_graphs(fgs);
+            compute_matrix_full(
+                &graphs,
+                d,
+                &args.matrix_dir,
+                &matrix_name,
+                Some(gt),
+                args.transpose,
+                args.registry,
+            );
         } else {
             compute_matrix(
                 &graphs,

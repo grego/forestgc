@@ -20,9 +20,15 @@ struct Args {
     /// try to separate the matrix into block diagonal components
     #[argh(switch, short = 'b')]
     blocks: bool,
+    /// actually don't prune
+    #[argh(switch)]
+    no_prune: bool,
     /// separate into two matrices after the provided number of rows
     #[argh(option)]
     row_sep: Option<u32>,
+    /// join with another file before pruning
+    #[argh(option, short = 'j')]
+    join: Option<String>,
     /// prune the matrix registry file to keep only the elements corresponding
     /// to nonzeros of a vector
     #[argh(option)]
@@ -115,6 +121,40 @@ fn prune_matrix<const BY_COLUMNS: usize>(
     (ret, indices)
 }
 
+fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i8)>) {
+    let mut lines = reader.lines();
+    let first = lines.next().unwrap().unwrap();
+    let mut lines = lines
+        .map(|s| {
+            let s = s.unwrap();
+            let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
+            (
+                [
+                    numbers.next().unwrap() as u32,
+                    numbers.next().unwrap() as u32,
+                ],
+                numbers.next().unwrap() as i8,
+            )
+        })
+        .collect::<Vec<_>>();
+    lines.pop();
+
+    let mut dims_iter = first
+        .split_whitespace()
+        .map(|i| i.parse::<usize>().unwrap());
+    let dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
+
+    (dims, lines)
+}
+
+fn write_sms_file<W: Write>(dims: [usize; 2], mat: Vec<([u32; 2], i8)>, w: &mut W) {
+    writeln!(w, "{} {} M", dims[0], dims[1]).unwrap();
+    for ([i, j], s) in mat {
+        writeln!(w, "{i} {j} {s}").unwrap();
+    }
+    writeln!(w, "0 0 0").unwrap();
+}
+
 fn main() {
     let mut args: Args = argh::from_env();
     let path = Path::new(&args.filename);
@@ -136,35 +176,36 @@ fn main() {
     }
 
     let file = File::open(&args.filename).unwrap();
-    let reader = BufReader::with_capacity(500_000_000, file);
-    let mut lines = reader.lines();
-    let first = lines.next().unwrap().unwrap();
-    let mut lines = lines
-        .map(|s| {
-            let s = s.unwrap();
-            let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
-            (
-                [
-                    numbers.next().unwrap() as u32,
-                    numbers.next().unwrap() as u32,
-                ],
-                numbers.next().unwrap() as i8,
-            )
-        })
-        .collect::<Vec<_>>();
-    lines.pop();
+    let mut reader = BufReader::with_capacity(500_000_000, file);
+    let (mut dims, mut lines) = read_sms_file(&mut reader);
     println!("Read {}", &args.filename);
+    println!("Original dimensions: {} {}", dims[0], dims[1]);
+
+    if let Some(ref afile) = args.join {
+        let file = File::open(afile).unwrap();
+        let mut reader = BufReader::with_capacity(500_000_000, file);
+        let (adims, alines) = read_sms_file(&mut reader);
+        lines.extend(
+            alines
+                .into_iter()
+                .map(|([i, j], s)| ([i + dims[0] as u32, j], s)),
+        );
+        dims[0] += adims[0];
+        println!("Read {}", &afile);
+        println!("Original dimensions: {} {}", adims[0], adims[1]);
+    }
 
     let t = Instant::now();
     lines.par_sort_unstable();
     println!("Sorted in {:.3}ms", t.elapsed().as_secs_f64() * 1e3);
     println!();
 
-    let mut dims_iter = first
-        .split_whitespace()
-        .map(|i| i.parse::<usize>().unwrap());
-    let mut dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
-    println!("Original dimensions: {} {}", dims[0], dims[1]);
+    if args.no_prune {
+        let file = File::create(parent.join(&new_stem).with_extension("sms")).unwrap();
+        let mut file = BufWriter::with_capacity(500_000_000, file);
+        write_sms_file(dims, lines, &mut file);
+        return;
+    }
 
     let mut rankp = 0;
     let dims0 = dims;
@@ -316,11 +357,7 @@ fn main() {
 
     let file = File::create(parent.join(&new_stem).with_extension("sms")).unwrap();
     let mut file = BufWriter::with_capacity(500_000_000, file);
-    writeln!(&mut file, "{} {} M", dims[0], dims[1]).unwrap();
-    for ([i, j], s) in lines {
-        writeln!(&mut file, "{i} {j} {s}").unwrap();
-    }
-    writeln!(&mut file, "0 0 0").unwrap();
+    write_sms_file(dims, lines, &mut file);
 
     let Some(reg) = registry else {
         return;
