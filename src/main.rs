@@ -34,6 +34,9 @@ struct Args {
     /// compute just the dimensions of the graph complex, for all excesses
     #[argh(switch, short = 'd')]
     dimensions: bool,
+    /// compute the complex with one hair
+    #[argh(switch)]
+    hairy: bool,
     /// the directory where the matrices will be output
     #[argh(option, short = 'm', default = "String::from(\"matrices\")")]
     matrix_dir: String,
@@ -55,9 +58,10 @@ fn read_graphfile(filename: &str, three_connected: bool) -> Vec<Graph> {
         .collect()
 }
 
-fn read_graphs(rank: u8, min_vertices: u8, three_connected: bool) -> Vec<Graph> {
+/// Read the grapsh of the specified rank with the specified number of vertices.
+fn read_graphs(rank: u8, minv: u8, maxv: u8, three_connected: bool) -> Vec<Graph> {
     let mut graphs = Vec::new();
-    for i in min_vertices..=(2 * rank - 2) {
+    for i in minv..=maxv {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
         let mut gs = read_graphfile(&filename, three_connected);
         graphs.append(&mut gs);
@@ -122,9 +126,9 @@ fn compute_matrix(
     forest_size: u8,
     matrix_dir: &str,
     matrix_name: &str,
-    du: bool,
-    dc: bool,
+    (du, dc): (bool, bool),
     registry: bool,
+    edges_on_double: bool,
 ) {
     let n_graphs = graphs.len();
     println!("Loaded {n_graphs} graphs");
@@ -138,7 +142,7 @@ fn compute_matrix(
 
     let fgs: Vec<_> = graphs
         .par_iter()
-        .map(|g| ForestedGraph::new(g, forest_size as usize, true))
+        .map(|g| ForestedGraph::new(g, forest_size as usize, edges_on_double))
         .collect();
 
     if registry {
@@ -350,7 +354,7 @@ fn print_dimensions(rank: u8, three_connected: bool) {
 
 fn main() {
     let args: Args = argh::from_env();
-    let rank = args.rank;
+    let mut rank = args.rank;
 
     if args.dimensions {
         print_dimensions(rank, !args.all);
@@ -358,7 +362,6 @@ fn main() {
     }
 
     fs::create_dir_all(&args.matrix_dir).unwrap();
-    let min_vertices = if args.full { 2 } else { 2 * rank - 2 };
 
     let prefix = if !args.full && args.dc && !args.du {
         "dc_"
@@ -369,6 +372,8 @@ fn main() {
     };
     let stem = if args.full {
         "f"
+    } else if args.hairy {
+        "h"
     } else if args.all {
         "a"
     } else {
@@ -386,17 +391,34 @@ fn main() {
                     d,
                     &args.matrix_dir,
                     &mn,
-                    !args.dc,
-                    !args.du,
+                    (!args.dc, !args.du),
                     args.registry,
+                    true,
                 );
             }
         }
         return;
     }
 
-    let graphs = read_graphs(rank, min_vertices, !args.all);
-    if let Some(d) = args.degree {
+    let mut min_vertices = if args.full { 2 } else { 2 * rank - 2 };
+    let mut max_vertices = 2 * rank - 2;
+    let mut min_degree = 4 * rank / 5;
+    if args.hairy {
+        rank += 1;
+        min_vertices = 2 * rank - 3;
+        max_vertices = 2 * rank - 3;
+        min_degree = (rank - 2) / 2;
+    }
+    let mut graphs = read_graphs(rank, min_vertices, max_vertices, !args.all && !args.hairy);
+    if args.hairy {
+        graphs.retain(|g| g.contains_loop());
+    }
+
+    let degrees = args
+        .degree
+        .map(|d| vec![d])
+        .unwrap_or_else(|| (min_degree..max_vertices).collect());
+    for d in degrees {
         if args.full {
             compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
         } else {
@@ -405,26 +427,10 @@ fn main() {
                 d,
                 &args.matrix_dir,
                 &matrix_name,
-                !args.dc,
-                !args.du,
+                (!args.dc, !args.du),
                 args.registry,
+                !args.hairy,
             );
-        }
-    } else {
-        for d in ((4 * rank) / 5)..(2 * rank - 2) {
-            if args.full {
-                compute_matrix_full(&graphs, d, &args.matrix_dir, &matrix_name);
-            } else {
-                compute_matrix(
-                    &graphs,
-                    d,
-                    &args.matrix_dir,
-                    &matrix_name,
-                    !args.dc,
-                    !args.du,
-                    args.registry,
-                );
-            }
         }
     }
 }
