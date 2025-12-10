@@ -1,5 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::{Display, Formatter};
 use std::mem;
 
 type HashType = u128;
@@ -1042,5 +1043,11 @@ impl Iterator for BitPositions {
         let u = mask.trailing_zeros() as usize;
         *self = BitPositions(mask & (mask - 1));
         Some(u)
+    }
+}
+
+impl Display for Graph {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_g6())
     }
 }

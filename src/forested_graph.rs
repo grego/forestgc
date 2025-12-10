@@ -2,6 +2,7 @@ use crate::graph::{BitPositions, Graph};
 use crate::graph::{compose, permute_mask, sign_subset};
 
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::fmt::{Display, Formatter};
 
 /// Graph with all subforests. It is a multigraph without tadpoles, with edges of
 /// valency at least 3.
@@ -56,6 +57,7 @@ impl ForestedGraph {
     /// Edges on multiedges can be disabled.
     pub fn in_range(g: &Graph, min: usize, max: usize, forests_on_multiedges: bool) -> Self {
         let (graph, _, mut perms) = g.canonical_label();
+        // let everything = (1 << graph.num_vertices) - 1;
 
         let (gs, dict) = graph.simplify(forests_on_multiedges);
         let subfs = gs.subforests(min, max);
@@ -68,6 +70,7 @@ impl ForestedGraph {
             {
                 mask |= 1 << dict[i].1;
             }
+
             if let Some((csf, _)) = canonical_subforest(mask, &perms) {
                 subforests.insert(csf);
             }
@@ -313,9 +316,9 @@ impl GraphTable {
         self.forests.len()
     }
 
-    pub fn get_index(&self, g: &str, forest: u64) -> usize {
-        let &index = &self.graphs.get(g).unwrap();
-        self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index]
+    pub fn get_index(&self, g: &str, forest: u64) -> Option<usize> {
+        let &index = &self.graphs.get(g)?;
+        Some(self.forests[*index].binary_search(&forest).unwrap() + self.indices[*index])
     }
 }
 
@@ -353,4 +356,38 @@ fn add_or_push<T: Eq>(l: &mut Vec<(T, i8)>, k: T, v: i8) {
         }
     }
     l.push((k, v));
+}
+
+impl Display for ForestedGraph {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.graph)?;
+        for &m in self.subforests() {
+            write!(f, " {m:X}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for UnmarkDifferential {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for &m in self.smaller_forests() {
+            write!(f, " {m:X}")?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for GraphTable {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for (i, fs) in self.forests.iter().enumerate() {
+            if let Some((g, _)) = self.graphs.iter().find(|(_, j)| **j == i) {
+                write!(f, "{g}")?;
+            }
+            for &m in fs {
+                write!(f, " {m:X}")?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
 }
