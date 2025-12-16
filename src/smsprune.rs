@@ -1,4 +1,5 @@
 #![allow(clippy::needless_range_loop)]
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::mem;
@@ -9,6 +10,7 @@ use argh::FromArgs;
 use rayon::prelude::*;
 
 use graphc::graph::BigGraph;
+use rustc_hash::FxHashSet;
 
 /// Forested graph complex computations.
 #[derive(FromArgs)]
@@ -20,9 +22,18 @@ struct Args {
     /// try to separate the matrix into block diagonal components
     #[argh(switch, short = 'b')]
     blocks: bool,
+    /// actually don't prune
+    #[argh(switch)]
+    no_prune: bool,
     /// separate into two matrices after the provided number of rows
     #[argh(option)]
     row_sep: Option<u32>,
+    /// join with another file before pruning
+    #[argh(option, short = 'j')]
+    join: Option<String>,
+    /// prune also rows with 2 nnz
+    #[argh(switch, short = '2')]
+    twocol: bool,
     /// prune the matrix registry file to keep only the elements corresponding
     /// to nonzeros of a vector
     #[argh(option)]
@@ -35,7 +46,7 @@ struct Args {
 /// Prune the matrix by deleting all rows/columns containing a single non-zero entry
 /// and the columns/rows where the entry is.
 fn prune_matrix<const BY_COLUMNS: usize>(
-    m: &mut Vec<([u32; 2], i8)>,
+    m: &mut Vec<([u32; 2], i32)>,
     dims: [usize; 2],
     mut row_sep: Option<&mut u32>,
 ) -> ([usize; 2], [Vec<u32>; 2]) {
@@ -115,6 +126,260 @@ fn prune_matrix<const BY_COLUMNS: usize>(
     (ret, indices)
 }
 
+/// For the rows which have 2 nonzero entries, zero the first entry by adding the appropriate
+/// multiple of the first column to the second.
+///
+/// Returns true if something was merged.
+fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
+    let mut ii = 1;
+    let mut nz = 0;
+    let mut entries = Vec::new();
+    let mut ops = Vec::new();
+    let mut row_ranges = Vec::with_capacity(x);
+    let last = ([x as u32 + 1, y as u32 + 1], 1);
+    let mut last_k = 0;
+    for (k, &([i, j], s)) in m.iter().chain(std::iter::once(&last)).enumerate() {
+        if i != ii {
+            if nz == 2 {
+                let (j0, s0) = entries[0];
+                let (j1, s1) = entries[1];
+                let d = gcd(s0, s1);
+                ops.push(([j0, j1], [s0 / d, s1 / d]));
+            }
+            row_ranges.push(last_k..k);
+            last_k = k;
+            ii = i;
+            nz = 0;
+            entries.drain(..);
+        }
+        if s == 0 {
+            println!("0 found!");
+        }
+        nz += 1;
+        entries.push((j, s));
+    }
+
+    ops.par_sort_by(
+        |([_, j10], [s00, s10]), ([_, j11], [s01, s11])| match j10.cmp(j11) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => (s00.abs() + s10.abs()).cmp(&(s01.abs() + s11.abs())),
+        },
+    );
+    ops.dedup_by_key(|([_, j], _)| *j);
+    ops.par_sort();
+    let mut opindices = vec![u32::MAX; y as usize + 1];
+    for (k, &([_, j], _)) in ops.iter().enumerate() {
+        opindices[j as usize] = k as u32;
+    }
+
+    for k in (0..ops.len()).rev() {
+        let ([j0, _], [_, s1]) = ops[k];
+        if let Ok(l) = ops[0..k].binary_search_by_key(&j0, |&([j, _], _)| j) {
+            ops[l].1[0] *= s1;
+            let mut ii = l + 1;
+            while let Some(([jj, _], _)) = ops.get(ii).cloned()
+                && jj == j0
+                && ii < k
+            {
+                ops[ii].1[0] *= s1;
+                ii += 1;
+            }
+            let mut ii = l - 1;
+            while let Some(([jj, _], _)) = ops.get(ii).cloned()
+                && jj == j0
+            {
+                ops[ii].1[0] *= s1;
+                ii -= 1;
+            }
+        }
+
+        let i = opindices[j0 as usize];
+        if i < k as u32 {
+            ops[i as usize].1[1] *= s1;
+        }
+    }
+
+    println!("{} ops found", ops.len());
+    if ops.is_empty() {
+        return [x, y];
+    }
+
+    let mut shift = 0;
+    let mut ny = 0;
+    let colindices: Vec<_> = (0..=y)
+        .map(|i| {
+            if opindices[i] != u32::MAX {
+                shift += 1;
+                u32::MAX
+            } else {
+                ny = i as u32 - shift;
+                ny
+            }
+        })
+        .collect();
+
+    let mb = mem::take(m);
+    entries.drain(..);
+    *m = row_ranges
+        .into_par_iter()
+        .flat_map(|row_entries| {
+            let mut entries = mb[row_entries].to_vec();
+            let Some(([i, _], _)) = entries.get(0).cloned() else {
+                return entries;
+            };
+
+            let mut indices = FxHashSet::default();
+            let mut stack = Vec::new();
+            let mut rops = Vec::new();
+            for &([_, j], _) in &entries {
+                stack.push(j);
+                indices.insert(j);
+            }
+
+            while let Some(j) = stack.pop() {
+                if let Ok(i) = ops.binary_search_by_key(&j, |&([j, _], _)| j) {
+                    rops.push(ops[i]);
+                    let ([_, j1], _) = ops[i];
+                    if indices.insert(j1) {
+                        stack.push(j1);
+                    }
+                    let mut ii = i + 1;
+                    while let Some(([jj, j1], [s0, s1])) = ops.get(ii)
+                        && *jj == j
+                    {
+                        rops.push(([*jj, *j1], [*s0, *s1]));
+                        if indices.insert(*j1) {
+                            stack.push(*j1);
+                        }
+                        ii += 1;
+                    }
+                    let mut ii = i - 1;
+                    while let Some(([jj, j1], [s0, s1])) = ops.get(ii)
+                        && *jj == j
+                    {
+                        rops.push(([*jj, *j1], [*s0, *s1]));
+                        if indices.insert(*j1) {
+                            stack.push(*j1);
+                        }
+                        ii -= 1;
+                    }
+                }
+
+                let i = opindices[j as usize];
+                if i != u32::MAX {
+                    rops.push(ops[i as usize]);
+                    let ([j0, _], _) = ops[i as usize];
+                    if indices.insert(j0) {
+                        stack.push(j0);
+                    }
+                }
+            }
+            drop(indices);
+            drop(stack);
+            rops.sort_unstable();
+            rops.dedup();
+
+            for ([j0, j1], [s0, s1]) in rops.into_iter().rev() {
+                let k1 = entries.iter().position(|([_, j], _)| *j == j1);
+                let v1 = k1.map(|k| entries[k].1).unwrap_or(0);
+                let k0 = entries.iter().position(|([_, j], _)| *j == j0);
+                let v0 = k0.map(|k| entries.swap_remove(k).1).unwrap_or(0);
+                let new = s1 * v0 - s0 * v1;
+                if new != 0 {
+                    entries.push(([i, j0], new))
+                }
+            }
+
+            let mut i = 0;
+            while i < entries.len() {
+                let e = &mut entries[i];
+                let c = colindices[e.0[1] as usize];
+                if c == u32::MAX {
+                    entries.swap_remove(i);
+                } else {
+                    e.0[1] = c;
+                    i += 1;
+                }
+            }
+
+            entries.sort_unstable();
+            entries
+        })
+        .collect();
+
+    [x, ny as usize]
+}
+
+fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
+    let mut col_divisors = vec![0; y + 1];
+    for &([_, j], s) in &*m {
+        col_divisors[j as usize] = gcd(col_divisors[j as usize], s);
+    }
+
+    let mut divided = 0;
+    let mut max = 0;
+    for t in m {
+        let d = col_divisors[t.0[1] as usize];
+        if d > 1 {
+            t.1 /= d;
+            divided += 1;
+            max = max.max(d);
+        }
+    }
+    println! {"divided {divided} cols, max by {max}"};
+}
+
+fn count_2cols(m: &Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
+    let mut counts = vec![0; y];
+    for &([_, j], _) in &*m {
+        counts[j as usize - 1] += 1;
+    }
+
+    let mut c = 0;
+    let min = counts.iter().min().copied().unwrap_or(0);
+    for &cc in &counts {
+        if cc == min {
+            c += 1;
+        }
+    }
+    println! {"remaing {c} columns with {min} entries"};
+}
+
+fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)>) {
+    let mut lines = reader.lines();
+    let first = lines.next().unwrap().unwrap();
+    let mut lines = lines
+        .map(|s| {
+            let s = s.unwrap();
+            let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
+            (
+                [
+                    numbers.next().unwrap() as u32,
+                    numbers.next().unwrap() as u32,
+                ],
+                numbers.next().unwrap() as i32,
+            )
+        })
+        .collect::<Vec<_>>();
+    lines.pop();
+
+    let mut dims_iter = first
+        .split_whitespace()
+        .map(|i| i.parse::<usize>().unwrap());
+    let dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
+
+    (dims, lines)
+}
+
+fn write_sms_file<W: Write>(dims: [usize; 2], mat: Vec<([u32; 2], i32)>, w: &mut W) {
+    writeln!(w, "{} {} M", dims[0], dims[1]).unwrap();
+    for ([i, j], s) in mat {
+        writeln!(w, "{i} {j} {s}").unwrap();
+    }
+    writeln!(w, "0 0 0").unwrap();
+}
+
 fn main() {
     let mut args: Args = argh::from_env();
     let path = Path::new(&args.filename);
@@ -136,66 +401,82 @@ fn main() {
     }
 
     let file = File::open(&args.filename).unwrap();
-    let reader = BufReader::with_capacity(500_000_000, file);
-    let mut lines = reader.lines();
-    let first = lines.next().unwrap().unwrap();
-    let mut lines = lines
-        .map(|s| {
-            let s = s.unwrap();
-            let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
-            (
-                [
-                    numbers.next().unwrap() as u32,
-                    numbers.next().unwrap() as u32,
-                ],
-                numbers.next().unwrap() as i8,
-            )
-        })
-        .collect::<Vec<_>>();
-    lines.pop();
+    let mut reader = BufReader::with_capacity(500_000_000, file);
+    let (mut dims, mut lines) = read_sms_file(&mut reader);
     println!("Read {}", &args.filename);
+    println!("Original dimensions: {} {}", dims[0], dims[1]);
+
+    if let Some(ref afile) = args.join {
+        let file = File::open(afile).unwrap();
+        let mut reader = BufReader::with_capacity(500_000_000, file);
+        let (adims, alines) = read_sms_file(&mut reader);
+        lines.extend(
+            alines
+                .into_iter()
+                .map(|([i, j], s)| ([i + dims[0] as u32, j], s)),
+        );
+        dims[0] += adims[0];
+        println!("Read {}", &afile);
+        println!("Original dimensions: {} {}", adims[0], adims[1]);
+    }
 
     let t = Instant::now();
     lines.par_sort_unstable();
     println!("Sorted in {:.3}ms", t.elapsed().as_secs_f64() * 1e3);
     println!();
 
-    let mut dims_iter = first
-        .split_whitespace()
-        .map(|i| i.parse::<usize>().unwrap());
-    let mut dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
-    println!("Original dimensions: {} {}", dims[0], dims[1]);
+    if args.no_prune {
+        let file = File::create(parent.join(&new_stem).with_extension("sms")).unwrap();
+        let mut file = BufWriter::with_capacity(500_000_000, file);
+        write_sms_file(dims, lines, &mut file);
+        return;
+    }
 
     let mut rankp = 0;
     let dims0 = dims;
 
     let mut registry: Option<[Vec<_>; 2]> = None;
     loop {
-        let (ndims, indices) = prune_matrix::<0>(&mut lines, dims, args.row_sep.as_mut());
-        if dims == ndims {
-            break;
-        }
-        println!(
-            "pruned {} rows, {} columns",
-            dims[0] - ndims[0],
-            dims[1] - ndims[1]
-        );
-        if args.registry {
-            let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
-            for i in 0..=1 {
-                for j in 0..dims[i] {
-                    if indices[i][j] != u32::MAX {
-                        reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
-                            r[i][j]
-                        } else {
-                            j
-                        };
+        loop {
+            let (ndims, indices) = prune_matrix::<0>(&mut lines, dims, args.row_sep.as_mut());
+            if dims == ndims {
+                break;
+            }
+            println!(
+                "pruned {} rows, {} columns",
+                dims[0] - ndims[0],
+                dims[1] - ndims[1]
+            );
+            if args.registry {
+                let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
+                for i in 0..=1 {
+                    for j in 0..dims[i] {
+                        if indices[i][j] != u32::MAX {
+                            reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
+                                r[i][j]
+                            } else {
+                                j
+                            };
+                        }
                     }
                 }
+                registry = Some(reg)
             }
-            registry = Some(reg)
+            dims = ndims;
         }
-        dims = ndims;
+        if args.twocol {
+            let ndims = merge_2cols(&mut lines, dims);
+            dbg!(ndims);
+            if ndims == dims {
+                break;
+            }
+            dims = ndims;
+        } else {
+            break;
+        }
+        // dbg!(&lines);
+        println!("merged columns for rows with 2 entries");
+        divide_cols(&mut lines, dims);
     }
     if dims0 != dims {
         rankp += dims0[1] - dims[1];
@@ -233,7 +514,21 @@ fn main() {
         rankp += dims1[0] - dims[0];
     }
 
+    // let mut nnzs = vec![0; 32];
+    // let mut ii = 0;
+    // let mut nz = 0;
+    // for &([i, _], _) in &lines {
+    //     if i != ii {
+    //         ii = i;
+    //         nnzs[nz] += 1;
+    //         nz = 0;
+    //     }
+    //     nz += 1;
+    // }
+
+    count_2cols(&lines, dims);
     println!("Final dimensions: {} {}", dims[0], dims[1]);
+    // dbg!(nnzs);
     {
         let mut file = File::create(parent.join(&new_stem).with_extension("rankp")).unwrap();
         write!(&mut file, "{rankp}").unwrap();
@@ -316,11 +611,7 @@ fn main() {
 
     let file = File::create(parent.join(&new_stem).with_extension("sms")).unwrap();
     let mut file = BufWriter::with_capacity(500_000_000, file);
-    writeln!(&mut file, "{} {} M", dims[0], dims[1]).unwrap();
-    for ([i, j], s) in lines {
-        writeln!(&mut file, "{i} {j} {s}").unwrap();
-    }
-    writeln!(&mut file, "0 0 0").unwrap();
+    write_sms_file(dims, lines, &mut file);
 
     let Some(reg) = registry else {
         return;
@@ -415,4 +706,15 @@ fn prune_by_vec(vecname: &str) -> std::io::Result<Vec<usize>> {
     std::fs::write(parent.join(new_name), &nv)?;
 
     Ok(idxs)
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    let (a, b) = (a.abs(), b.abs());
+    let mut t = (a.min(b), a.max(b));
+    loop {
+        if t.0 == 0 {
+            return t.1;
+        }
+        t = (t.1 % t.0, t.0);
+    }
 }
