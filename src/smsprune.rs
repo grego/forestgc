@@ -130,7 +130,7 @@ fn prune_matrix<const BY_COLUMNS: usize>(
 /// multiple of the first column to the second.
 ///
 /// Returns true if something was merged.
-fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> bool {
+fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     let mut ii = 1;
     let mut nz = 0;
     let mut entries = Vec::new();
@@ -202,8 +202,22 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> bool {
 
     println!("{} ops found", ops.len());
     if ops.is_empty() {
-        return false;
+        return [x, y];
     }
+
+    let mut shift = 0;
+    let mut ny = 0;
+    let colindices: Vec<_> = (0..=y)
+        .map(|i| {
+            if opindices[i] != u32::MAX {
+                shift += 1;
+                u32::MAX
+            } else {
+                ny = i as u32 - shift;
+                ny
+            }
+        })
+        .collect();
 
     let mb = mem::take(m);
     entries.drain(..);
@@ -261,6 +275,8 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> bool {
                     }
                 }
             }
+            drop(indices);
+            drop(stack);
             rops.sort_unstable();
             rops.dedup();
 
@@ -274,12 +290,25 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> bool {
                     entries.push(([i, j0], new))
                 }
             }
+
+            let mut i = 0;
+            while i < entries.len() {
+                let e = &mut entries[i];
+                let c = colindices[e.0[1] as usize];
+                if c == u32::MAX {
+                    entries.swap_remove(i);
+                } else {
+                    e.0[1] = c;
+                    i += 1;
+                }
+            }
+
             entries.sort_unstable();
             entries
         })
         .collect();
 
-    true
+    [x, ny as usize]
 }
 
 fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
@@ -299,6 +328,22 @@ fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
         }
     }
     println! {"divided {divided} cols, max by {max}"};
+}
+
+fn count_2cols(m: &Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
+    let mut counts = vec![0; y];
+    for &([_, j], _) in &*m {
+        counts[j as usize - 1] += 1;
+    }
+
+    let mut c = 0;
+    let min = counts.iter().min().copied().unwrap_or(0);
+    for &cc in &counts {
+        if cc == min {
+            c += 1;
+        }
+    }
+    println! {"remaing {c} columns with {min} entries"};
 }
 
 fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)>) {
@@ -419,7 +464,14 @@ fn main() {
             }
             dims = ndims;
         }
-        if !args.twocol || !merge_2cols(&mut lines, dims) {
+        if args.twocol {
+            let ndims = merge_2cols(&mut lines, dims);
+            dbg!(ndims);
+            if ndims == dims {
+                break;
+            }
+            dims = ndims;
+        } else {
             break;
         }
         // dbg!(&lines);
@@ -474,6 +526,7 @@ fn main() {
     //     nz += 1;
     // }
 
+    count_2cols(&lines, dims);
     println!("Final dimensions: {} {}", dims[0], dims[1]);
     // dbg!(nnzs);
     {
