@@ -83,7 +83,14 @@ fn compute_dimensions(graphs: &[Vec<Graph>]) -> Vec<Vec<usize>> {
             .map(|g| {
                 let mut dims = vec![0; i + 2];
                 let sfs = ForestedGraph::all(g);
-                let s = sfs.filter(|f| sfs.girth(f) > 0);
+                let s = sfs.filter(|f| {
+                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                    let gr = sfs.graph().contract_multiple_neighborhoods(&forest);
+                    let p = gr.girth();
+                    // let q = gr.vertices_valency(1, 1).len();
+                    let q = gr.count_double_edges();
+                    p == 2 && q == 9
+                });
                 for m in s.subforests() {
                     dims[m.count_ones() as usize] += 1;
                 }
@@ -141,7 +148,13 @@ fn compute_matrix(
         .par_iter()
         .map(|g| {
             let fg = ForestedGraph::new(g, forest_size as usize, true);
-            let g = fg.filter(|f| fg.girth(f) > 0);
+            let g = fg.filter(|f| {
+                let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                let gr = fg.graph().contract_multiple_neighborhoods(&forest);
+                let p = gr.girth();
+                let q = gr.vertices_valency(1, 1).len();
+                p == 1 && q > 0
+            });
             g
         })
         .collect();
@@ -165,7 +178,8 @@ fn compute_matrix(
                     let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
                     let gr = g.graph().contract_multiple_neighborhoods(&forest);
                     let p = gr.girth();
-                    p > 0
+                    let q = gr.vertices_valency(1, 1).len();
+                    p == 1 && q > 0
                 });
                 du
             })

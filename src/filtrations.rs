@@ -204,7 +204,9 @@ fn count_double_edges_and_3edge_connected_rank10() {
     assert_eq!(three_edge_connected_number, 30468);
 }
 
-fn compute_girth_filtration(path: &str) -> (usize, Vec<Vec<usize>>, Vec<Vec<usize>>) {
+fn compute_girth_filtration(
+    path: &str,
+) -> (usize, Vec<Vec<usize>>, Vec<Vec<usize>>, Vec<Vec<usize>>) {
     let file = File::open(path).unwrap();
     let reader = BufReader::new(file);
     let graphs = reader
@@ -213,12 +215,13 @@ fn compute_girth_filtration(path: &str) -> (usize, Vec<Vec<usize>>, Vec<Vec<usiz
         .collect::<Vec<Graph>>();
     let graphs_loaded_number = graphs.len();
 
-    let (matr, loops) = graphs
+    let (matr, loops, mult) = graphs
         .par_iter()
         .filter(|g| g.is_3edge_connected())
         .map(|g| {
             let mut mat = vec![vec![0; 20]; 20];
             let mut loops = vec![vec![0; 20]; 20];
+            let mut mult = vec![vec![0; 20]; 20];
             for q in 1..20 {
                 let forested_graphs = ForestedGraph::new(g, q, false);
                 for f in forested_graphs.subforests().iter() {
@@ -231,58 +234,64 @@ fn compute_girth_filtration(path: &str) -> (usize, Vec<Vec<usize>>, Vec<Vec<usiz
                     if p == 1 {
                         loops[fff.vertices_valency(1, 1).len()][q] += 1;
                     }
+                    if p == 2 {
+                        mult[fff.count_double_edges() as usize][q] += 1;
+                    }
                 }
             }
-            (mat, loops)
+            (mat, loops, mult)
         })
         .reduce(
-            || (vec![vec![0; 20]; 20], vec![vec![0; 20]; 20]),
-            |(a, b), (k, l)| {
+            || {
+                (
+                    vec![vec![0; 20]; 20],
+                    vec![vec![0; 20]; 20],
+                    vec![vec![0; 20]; 20],
+                )
+            },
+            |(a, b, c), (k, l, m)| {
                 let mut mat = vec![vec![0; 20]; 20];
                 let mut loops = vec![vec![0; 20]; 20];
+                let mut mult = vec![vec![0; 20]; 20];
                 for i in 0..20 {
                     for j in 0..20 {
                         mat[i][j] = a[i][j] + k[i][j];
                         loops[i][j] = b[i][j] + l[i][j];
+                        mult[i][j] = c[i][j] + m[i][j];
                     }
                 }
-                (mat, loops)
+                (mat, loops, mult)
             },
         );
 
-    (graphs_loaded_number, matr, loops)
+    println!("Graphs loaded:");
+    println!("{graphs_loaded_number}");
+    println!("Girth filtration dimensions:");
+    println!("{:?}", matr);
+    println!("Loops filtration dimentsions:");
+    println!("{:?}", loops);
+    println!("Multi-edge filtration dimentsions:");
+    println!("{:?}", mult);
+
+    (graphs_loaded_number, matr, loops, mult)
 }
 
 fn girth_filtration_rank4() {
     let path = "graphs/v6_e9.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank5() {
     let path = "graphs/v8_e12.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank6_non_3_edge_connected() {
     let path = "graphs/v10_e15.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 
     let expmatr = [
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -326,66 +335,31 @@ fn girth_filtration_rank6_non_3_edge_connected() {
 fn girth_filtration_rank6() {
     let path = "graphs/v10_e15.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank7() {
     let path = "graphs/v12_e18.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank8() {
     let path = "graphs/v14_e21.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank9() {
     let path = "graphs/v16_e24.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn girth_filtration_rank10() {
     let path = "graphs/v18_e27.g6";
 
-    let (graphs_loaded_number, matr, loops) = compute_girth_filtration(path);
-
-    println!("Graphs loaded:");
-    println!("{graphs_loaded_number}");
-    println!("Girth filtration dimensions:");
-    println!("{:?}", matr);
-    println!("Loops filtration dimentsions:");
-    println!("{:?}", loops);
+    let (graphs_loaded_number, matr, loops, mult) = compute_girth_filtration(path);
 }
 
 fn main() {
@@ -395,5 +369,5 @@ fn main() {
     //     return;
     // };
 
-    girth_filtration_rank5();
+    girth_filtration_rank7();
 }
