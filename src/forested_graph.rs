@@ -1,8 +1,8 @@
-use crate::graph::{BitPositions, Graph};
-use crate::graph::{compose, permute_mask, sign_subset};
+use crate::graph::{BitPositions, Graph, ordered_ktuples};
+use crate::graph::{compose, inverse, permute_mask, sign_subset};
 
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Write};
 
 /// Graph with all subforests. It is a multigraph without tadpoles, with edges of
 /// valency at least 3.
@@ -18,6 +18,10 @@ pub struct ForestedGraph {
     /// automorphism.
     /// Every isomorphism class has lexicographically the smallest representative.
     subforests: Vec<u64>,
+    /// Does the forested graph use the odd sign convention?
+    odd: bool,
+    /// The marked hairs on the graph.
+    hairs: Vec<u8>,
 }
 
 /// The result of the unmarking differential on all subforests in a single graph.
@@ -49,15 +53,99 @@ pub struct GraphTable {
 impl ForestedGraph {
     /// Find all subforests, up to isomorphism, of the graph, with the given size.
     /// Edges on multiedges can be disabled.
-    pub fn new(g: &Graph, forest_size: usize, forests_on_multiedges: bool) -> Self {
-        Self::in_range(g, forest_size, forest_size, forests_on_multiedges)
+    pub fn new(g: &Graph, forest_size: usize, forests_on_multiedges: bool, odd: bool) -> Self {
+        Self::in_range(g, forest_size, forest_size, forests_on_multiedges, odd)
     }
 
     /// Find all subforests, up to isomorphism, of the graph, in the specified range.
     /// Edges on multiedges can be disabled.
-    pub fn in_range(g: &Graph, min: usize, max: usize, forests_on_multiedges: bool) -> Self {
-        let (graph, _, mut perms) = g.canonical_label();
-        // let everything = (1 << graph.num_vertices) - 1;
+    pub fn in_range(
+        g: &Graph,
+        min: usize,
+        max: usize,
+        forests_on_multiedges: bool,
+        odd: bool,
+    ) -> Self {
+        let (graph, _, perms) = g.canonical_label();
+
+        Self::with_autos(
+            graph,
+            perms,
+            min,
+            max,
+            forests_on_multiedges,
+            odd,
+            Vec::with_capacity(0),
+        )
+    }
+
+    /// Find all subforests, up to isomorphism, of the graph, with all possible choice of hairs,
+    /// in the specified range.
+    /// Edges on multiedges can be disabled.
+    pub fn hairy(
+        g: &Graph,
+        min: usize,
+        max: usize,
+        forests_on_multiedges: bool,
+        odd: bool,
+        hairs: u8,
+    ) -> Vec<Self> {
+        let (graph, _, perms) = g.canonical_label();
+
+        let mut graphs = Vec::new();
+
+        if hairs == 0 {
+            return vec![Self::with_autos(
+                graph,
+                perms,
+                min,
+                max,
+                forests_on_multiedges,
+                odd,
+                Vec::with_capacity(0),
+            )];
+        }
+
+        let unary: Vec<_> = (0..graph.num_vertices)
+            .filter(|&v| graph.adj[v as usize].count_ones() == 1)
+            .collect();
+        let hair_choices = ordered_ktuples(&unary, hairs as usize);
+        for h in &hair_choices {
+            if let Some(p) = hair_preserving_perms(&perms, h) {
+                let g = Self::with_autos(
+                    graph.clone(),
+                    p,
+                    min,
+                    max,
+                    forests_on_multiedges,
+                    odd,
+                    h.clone(),
+                );
+                graphs.push(g);
+            }
+        }
+        graphs
+    }
+
+    fn with_autos(
+        graph: Graph,
+        mut perms: Vec<Vec<u8>>,
+        min: usize,
+        max: usize,
+        forests_on_multiedges: bool,
+        odd: bool,
+        hairs: Vec<u8>,
+    ) -> Self {
+        let everything = (1 << graph.num_vertices) - 1;
+
+        let signs: Vec<_> = if !odd {
+            vec![1; perms.len()]
+        } else {
+            perms
+                .iter()
+                .map(|p| sign_halfedges(p, &graph.adj))
+                .collect()
+        };
 
         let (gs, dict) = graph.simplify(forests_on_multiedges);
         let subfs = gs.subforests(min, max);
@@ -71,7 +159,13 @@ impl ForestedGraph {
                 mask |= 1 << dict[i].1;
             }
 
-            if let Some((csf, _)) = canonical_subforest(mask, &perms) {
+            if odd {
+                mask = everything & !mask;
+            }
+            if let Some((mut csf, _)) = canonical_subforest_even(mask, &perms, &signs) {
+                if odd {
+                    csf = everything & !csf;
+                }
                 subforests.insert(csf);
             }
         }
@@ -94,15 +188,17 @@ impl ForestedGraph {
             perms,
             edges,
             subforests,
+            odd,
+            hairs,
         }
     }
     /// Find all subforests, up to isomorphism, of the graph.
-    pub fn all(g: &Graph) -> Self {
-        Self::in_range(g, 0, g.num_vertices as usize - 1, true)
+    pub fn all(g: &Graph, odd: bool, hairs: u8) -> Vec<Self> {
+        Self::hairy(g, 0, g.num_vertices as usize - 1, true, odd, hairs)
     }
 
     /// Create a new forested graph with only the provided subforests.
-    pub fn with_subforests(g: &Graph, forests: &[Vec<u8>]) -> Self {
+    pub fn with_subforests(g: &Graph, forests: &[Vec<u8>], odd: bool) -> Self {
         let graph = g.clone();
         let perms = g.automorphisms();
         let mut subforests = Vec::new();
@@ -121,6 +217,8 @@ impl ForestedGraph {
             perms,
             edges,
             subforests,
+            odd,
+            hairs: Vec::with_capacity(0),
         }
     }
 
@@ -128,12 +226,30 @@ impl ForestedGraph {
     pub fn d_unmark(&self) -> UnmarkDifferential {
         let mut smaller_forests = FxHashSet::default();
         let mut columns = Vec::new();
+        let everything = (1 << self.graph.num_vertices) - 1;
+        let signs: Vec<_> = if !self.odd {
+            vec![1; self.perms.len()]
+        } else {
+            self.perms
+                .iter()
+                .map(|p| sign_halfedges(p, &self.graph.adj))
+                .collect()
+        };
+
         for &mask in &self.subforests {
             let mut col = Vec::new();
             let mut sign = 1;
+            let compl = !mask & self.edges;
             for i in BitPositions(mask) {
-                let m = mask & !(1 << i);
-                if let Some((f, s)) = canonical_subforest(m, &self.perms) {
+                let mut m = mask & !(1 << i);
+                if self.odd {
+                    m = everything & !mask;
+                    sign = (-1_i8).pow((((1 << i) - 1) & compl).count_ones());
+                }
+                if let Some((mut f, s)) = canonical_subforest(m, &self.perms, &signs) {
+                    if self.odd {
+                        f = everything & !f;
+                    }
                     smaller_forests.insert(f);
                     add_or_push(&mut col, f, s * sign);
                 }
@@ -160,17 +276,61 @@ impl ForestedGraph {
     pub fn d_contract(&self) -> ContractDifferential {
         let mut contracted_graphs: Vec<(String, Vec<Vec<u8>>)> = Vec::new();
         let mut contracted_indices = vec![(0, Vec::new()); self.graph.num_vertices as usize];
+        let mut signs = Vec::new();
+        let everything = (1 << (self.graph.num_vertices)) - 1;
+        let smaller = (1 << (self.graph.num_vertices - 2)) - 1;
+        let vertices = everything & !self.edges;
+        let mut oddsigns = vec![1; self.graph.num_vertices as usize];
+        let mut odddeleted = vec![0; self.graph.num_vertices as usize];
         for i in BitPositions(self.edges) {
             let (g, m) = self.graph.contract_neighborhood(i as u8);
-            let (g, base, perms) = g.canonical_label();
-            let to_canon = compose(&m, &base);
-            let g6 = g.to_g6();
+            let (g, base, mut perms) = g.canonical_label();
+            let mut to_canon = compose(&m, &base);
+            let mut g6 = g.to_g6();
+
+            if !self.hairs.is_empty() {
+                // let loop_count = (0..g.num_vertices)
+                //     .filter(|&i| g.adj[i as usize].count_ones() == 1)
+                //     .count();
+                // if loop_count != 2 {
+                //     continue;
+                // }
+                let mut hairs = compose(&self.hairs, &to_canon);
+                let (c, ps) = canonical_hairs(&perms, &mut hairs);
+                if let Some(p) = c {
+                    to_canon = compose(&to_canon, &p);
+                }
+                perms = ps;
+
+                for &hair in &hairs {
+                    g6.push_str(&format!("-{:X}", hair));
+                }
+            }
+
+            if self.odd {
+                let v = to_canon
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .position(|(j, v)| j != i && *v == to_canon[i])
+                    .unwrap();
+                let sign = (-1_i8).pow((((1 << v) - 1) & vertices).count_ones());
+                oddsigns.push(sign * sign_halfedges(&to_canon, &self.graph.adj));
+                odddeleted.push((1 << i) | (1 << v));
+            }
+
             if let Some(k) = contracted_graphs.iter().position(|(g, _)| g == &g6) {
                 contracted_indices[i] = (k, to_canon);
-            } else {
-                contracted_indices[i] = (contracted_graphs.len(), to_canon);
-                contracted_graphs.push((g6, perms))
+                continue;
             }
+            let s = if !self.odd {
+                vec![1; perms.len()]
+            } else {
+                perms.iter().map(|p| sign_halfedges(p, &g.adj)).collect()
+            };
+            contracted_indices[i] = (contracted_graphs.len(), to_canon);
+            contracted_graphs.push((g6, perms));
+            signs.push(s);
         }
 
         let mut contracted_forests = vec![FxHashSet::default(); self.graph.num_vertices as usize];
@@ -180,10 +340,23 @@ impl ForestedGraph {
             let mut sign = 1;
             for i in BitPositions(mask) {
                 let &(j, ref to_canon) = &contracted_indices[i];
+                // must be a marked edge on a double edge with the odd sign convention
+                // whose contraction produces a loop, i.e. 0 in this convention
+                if to_canon.is_empty() {
+                    continue;
+                }
                 let (_, perms) = &contracted_graphs[j];
-                let ss = sign_subset(to_canon, BitPositions(mask & !(1 << i)));
-                let m = permute_mask(mask & !(1 << i), to_canon);
-                if let Some((f, s)) = canonical_subforest(m, perms) {
+                let ma = if !self.odd { mask } else { everything & !mask };
+                let ss = sign_subset(to_canon, BitPositions(ma & !(1 << i) & !odddeleted[i]));
+                let mut m = permute_mask(mask & !(1 << i), to_canon);
+                if self.odd {
+                    m = smaller & !m;
+                    sign = oddsigns[i];
+                }
+                if let Some((mut f, s)) = canonical_subforest(m, perms, &signs[j]) {
+                    if self.odd {
+                        f = everything & !f;
+                    }
                     contracted_forests[j].insert(f);
                     add_or_push(&mut col, (j, f), s * sign * ss);
                 }
@@ -227,7 +400,18 @@ impl ForestedGraph {
             graph: self.graph.clone(),
             perms: self.perms.clone(),
             edges: self.edges,
+            odd: self.odd,
+            hairs: self.hairs.clone(),
         }
+    }
+
+    pub fn graph_string(&self) -> String {
+        let mut f = String::new();
+        write!(f, "{}", self.graph).unwrap();
+        for &h in &self.hairs {
+            write!(f, "-{h:X}").unwrap();
+        }
+        f
     }
 }
 
@@ -358,23 +542,60 @@ impl GraphTable {
 /// Otherwise, return a touple `(forest, sign)` where `forest` is its representing
 /// class and `sign` its sign.
 #[inline]
-pub fn canonical_subforest(mask: u64, perms: &[Vec<u8>]) -> Option<(u64, i8)> {
+pub fn canonical_subforest(mask: u64, perms: &[Vec<u8>], signs: &[i8]) -> Option<(u64, i8)> {
     let mut cm = mask;
     let mut sign = 1;
     let mut _autos = 1;
-    for perm in perms {
+    for (i, perm) in perms.iter().enumerate() {
         let m = permute_mask(mask, perm);
         if m == mask {
-            if sign_subset(perm, BitPositions(mask)) == -1 {
+            if signs[i] * sign_subset(perm, BitPositions(mask)) == -1 {
                 return None;
             }
             _autos += 1;
         } else if m < cm {
             cm = m;
-            sign = sign_subset(perm, BitPositions(mask));
+            sign = signs[i] * sign_subset(perm, BitPositions(mask));
         }
     }
     Some((cm, sign))
+}
+
+/// Compute the canonical form of a subforest, given a list of graph automorphisms.
+/// If it has an odd automorphism, return None.
+/// Otherwise, return a touple `(forest, sign)` where `forest` is its representing
+/// class and `sign` its sign.
+#[inline]
+pub fn canonical_subforest_even(mask: u64, perms: &[Vec<u8>], signs: &[i8]) -> Option<(u64, i8)> {
+    let mut cm = mask;
+    let mut sign = 1;
+    let mut _autos = 1;
+    for (i, perm) in perms.iter().enumerate() {
+        let m = permute_mask(mask, perm);
+        let s = signs.get(i).unwrap_or(&1) * sign_subset(perm, BitPositions(mask));
+        if m == mask {
+            if s == -1 {
+                return None;
+            }
+            _autos += 1;
+        } else if m < cm {
+            cm = m;
+            sign = s;
+        }
+    }
+    Some((cm, sign))
+}
+
+fn sign_halfedges(perm: &[u8], adj: &[u64]) -> i8 {
+    let mut s = 1;
+    for &a in adj.iter().filter(|a| a.count_ones() == 2) {
+        let v = a.trailing_zeros();
+        let w = (a & !(1 << v)).trailing_zeros();
+        if perm[v as usize] > perm[w as usize] {
+            s *= -1;
+        }
+    }
+    s
 }
 
 /// Add the value to the `(key, value)` list,
@@ -393,9 +614,47 @@ fn add_or_push<T: Eq>(l: &mut Vec<(T, i8)>, k: T, v: i8) {
     l.push((k, v));
 }
 
+fn hair_preserving_perms(perms: &[Vec<u8>], hairs: &[u8]) -> Option<Vec<Vec<u8>>> {
+    let mut p = Vec::new();
+    for perm in perms {
+        let ph = compose(hairs, perm);
+        if ph.as_slice() < hairs {
+            return None;
+        }
+        if ph == hairs {
+            p.push(perm.clone());
+        }
+    }
+    Some(p)
+}
+
+fn canonical_hairs(perms: &[Vec<u8>], hairs: &mut Vec<u8>) -> (Option<Vec<u8>>, Vec<Vec<u8>>) {
+    let mut p = Vec::new();
+    let mut canperm = None;
+    let orig_hairs = hairs.clone();
+    for perm in perms {
+        let ph = compose(&orig_hairs, perm);
+        if ph.as_slice() < hairs {
+            canperm = Some(perm.clone());
+            *hairs = ph;
+            p.drain(..);
+        } else if ph.as_slice() == hairs.as_slice() {
+            let mut perm = perm.clone();
+            if let Some(ref q) = canperm {
+                perm = compose(&inverse(q), &perm);
+            }
+            p.push(perm.clone());
+        }
+    }
+    (canperm, p)
+}
+
 impl Display for ForestedGraph {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.graph)?;
+        for &h in &self.hairs {
+            write!(f, "-{h:X}")?;
+        }
         for &m in self.subforests() {
             write!(f, " {m:X}")?;
         }

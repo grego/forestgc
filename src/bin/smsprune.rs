@@ -168,7 +168,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     );
     ops.dedup_by_key(|([_, j], _)| *j);
     ops.par_sort();
-    let mut opindices = vec![u32::MAX; y as usize + 1];
+    let mut opindices = vec![u32::MAX; y + 1];
     for (k, &([_, j], _)) in ops.iter().enumerate() {
         opindices[j as usize] = k as u32;
     }
@@ -225,7 +225,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
         .into_par_iter()
         .flat_map(|row_entries| {
             let mut entries = mb[row_entries].to_vec();
-            let Some(([i, _], _)) = entries.get(0).cloned() else {
+            let Some(([i, _], _)) = entries.first().cloned() else {
                 return entries;
             };
 
@@ -330,9 +330,9 @@ fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
     println! {"divided {divided} cols, max by {max}"};
 }
 
-fn count_2cols(m: &Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
+fn count_2cols(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
     let mut counts = vec![0; y];
-    for &([_, j], _) in &*m {
+    for &([_, j], _) in m {
         counts[j as usize - 1] += 1;
     }
 
