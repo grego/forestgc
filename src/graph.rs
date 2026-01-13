@@ -1031,6 +1031,46 @@ fn get_ktuples_iter<T: Copy>(k: usize, ktuples: &mut Vec<Vec<T>>, head: Vec<T>, 
     }
 }
 
+/// Get all ktuples of the given array.
+pub fn ordered_ktuples<T: Copy>(arr: &[T], k: usize) -> Vec<Vec<T>> {
+    let mut ktuples = Vec::new();
+    ordered_ktuples_iter(k, &mut ktuples, arr, Vec::new(), 0);
+    ktuples
+}
+
+fn ordered_ktuples_iter<T: Copy>(
+    k: usize,
+    ktuples: &mut Vec<Vec<T>>,
+    arr: &[T],
+    head: Vec<T>,
+    mask: u64,
+) {
+    if k == 0 {
+        return;
+    }
+
+    if k == 1 {
+        for (j, &i) in arr.iter().enumerate() {
+            if mask & (1 << j) != 0 {
+                continue;
+            }
+            let mut v = head.clone();
+            v.push(i);
+            ktuples.push(v);
+        }
+        return;
+    }
+
+    for (j, &i) in arr.iter().enumerate() {
+        if mask & (1 << j) != 0 {
+            continue;
+        }
+        let mut v = head.clone();
+        v.push(i);
+        ordered_ktuples_iter(k - 1, ktuples, arr, v, mask | (1 << j));
+    }
+}
+
 impl Iterator for BitPositions {
     type Item = usize;
 

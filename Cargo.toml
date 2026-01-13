@@ -2,29 +2,9 @@
 name = "graphc"
 version = "0.1.0"
 edition = "2024"
-default-run = "forestgc"
+default-run = "graphc"
 
 [dependencies]
 argh = "0.1.13"
 rayon = "1.11.0"
 rustc-hash = "2.1.1"
-
-[[bin]]
-name = "forestgc"
-path = "src/main.rs"
-
-[[bin]]
-name = "g6dot"
-path = "src/g6dot.rs"
-
-[[bin]]
-name = "smssort"
-path = "src/smssort.rs"
-
-[[bin]]
-name = "smsprune"
-path = "src/smsprune.rs"
-
-[[bin]]
-name = "filtrations"
-path = "src/filtrations.rs"

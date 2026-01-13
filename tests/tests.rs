@@ -1,8 +1,8 @@
-use graphc::forested_graph::ForestedGraph;
+// use graphc::forested_graph::ForestedGraph;
 use graphc::graph::*;
-use rayon::prelude::*;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+// use rayon::prelude::*;
+// use std::fs::File;
+// use std::io::{BufRead, BufReader};
 
 static PETERSEN_VERTICES: u8 = 10;
 static PETERSEN_EDGES: &[(u8, u8)] = &[
@@ -466,4 +466,20 @@ fn test_find_ktuples() {
     ];
     assert_eq!(get_ktuples(arr, 3), res);
     assert_eq!(get_ktuples(arr, 6), [arr]);
+}
+
+#[test]
+fn test_ordered_ktuples() {
+    let arr = &[1, 2, 3];
+    let res = &[[1, 2], [1, 3], [2, 1], [2, 3], [3, 1], [3, 2]];
+    let perms = &[
+        [1, 2, 3],
+        [1, 3, 2],
+        [2, 1, 3],
+        [2, 3, 1],
+        [3, 1, 2],
+        [3, 2, 1],
+    ];
+    assert_eq!(ordered_ktuples(arr, 2), res);
+    assert_eq!(ordered_ktuples(arr, 3), perms);
 }

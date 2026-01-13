@@ -7,6 +7,7 @@ use argh::FromArgs;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::io::{BufWriter, Write};
+use std::path::Path;
 use std::time::Instant;
 
 /// Forested graph complex computations.
@@ -34,15 +35,21 @@ struct Args {
     /// compute just the dimensions of the graph complex, for all excesses
     #[argh(switch, short = 'd')]
     dimensions: bool,
-    /// compute the complex with one hair
-    #[argh(switch)]
-    hairy: bool,
+    /// use the odd sign convention
+    #[argh(switch, short = 'o')]
+    odd: bool,
     /// compute the complex with one hair
     #[argh(switch, short = 'T')]
     transpose: bool,
+    /// compute the complex with one hair
+    #[argh(option, default = "0")]
+    hairs: u8,
     /// the directory where the matrices will be output
     #[argh(option, short = 'm', default = "String::from(\"matrices\")")]
     matrix_dir: String,
+    /// the directory where the matrices will be output
+    #[argh(option, short = 'g')]
+    graphfile: Option<String>,
     /// the rank of the forested graph complex
     #[argh(positional)]
     rank: u8,
@@ -72,9 +79,11 @@ fn read_graphs(rank: u8, minv: u8, maxv: u8, three_connected: bool) -> Vec<Graph
     graphs
 }
 
-fn read_all_graphs(rank: u8, three_connected: bool) -> Vec<Vec<Graph>> {
+/// Read all graphs of the specified rank into the list by the excess of the graph.
+fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8) -> Vec<Vec<Graph>> {
     let mut graphs = Vec::new();
-    for i in 2..=(2 * rank - 2) {
+    let rank = rank + hairs;
+    for i in 2..=(2 * rank - 2 - hairs) {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
         let gs = read_graphfile(&filename, three_connected);
         graphs.push(gs);
@@ -82,24 +91,27 @@ fn read_all_graphs(rank: u8, three_connected: bool) -> Vec<Vec<Graph>> {
     graphs
 }
 
-fn compute_dimensions(graphs: &[Vec<Graph>]) -> Vec<Vec<usize>> {
+fn compute_dimensions(graphs: &[Vec<Graph>], odd: bool, hairs: u8) -> Vec<Vec<usize>> {
     let mut res = vec![vec![1]];
     for (i, gs) in graphs.iter().enumerate() {
         let dims = gs
             .par_iter()
+            .filter(|g| !odd || !g.contains_loop())
             .map(|g| {
                 let mut dims = vec![0; i + 2];
-                let sfs = ForestedGraph::all(g);
-                let s = sfs.filter(|f| {
-                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
-                    let gr = sfs.graph().contract_multiple_neighborhoods(&forest);
-                    let p = gr.girth();
-                    // let q = gr.vertices_valency(1, 1).len();
-                    // let q = gr.count_double_edges();
-                    p == 2 //&& q > 0
-                });
-                for m in s.subforests() {
-                    dims[m.count_ones() as usize] += 1;
+                let sfs = ForestedGraph::all(g, odd, hairs);
+                for fs in sfs {
+                    let s = fs.filter(|f| {
+                        let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                        let gr = fs.graph().contract_multiple_neighborhoods(&forest);
+                        let p = gr.girth();
+                        // let q = gr.vertices_valency(1, 1).len();
+                        // let q = gr.count_double_edges();
+                        p == 2 //&& q > 0
+                    });
+                    for m in s.subforests() {
+                        dims[m.count_ones() as usize] += 1;
+                    }
                 }
                 dims
             })
@@ -134,10 +146,10 @@ fn euler_characteristics(dims: &[Vec<usize>]) -> Vec<isize> {
 
 fn compute_matrix(
     graphs: &[Graph],
-    forest_size: u8,
-    matrix_dir: &str,
-    matrix_name: &str,
+    (forest_size, hairs): (u8, u8),
+    (matrix_dir, matrix_name): (&str, &str),
     (du, dc): (bool, bool),
+    odd: bool,
     registry: bool,
     edges_on_double: bool,
 ) {
@@ -153,8 +165,18 @@ fn compute_matrix(
 
     let fgs: Vec<_> = graphs
         .par_iter()
-        .map(|g| {
-            let fg = ForestedGraph::new(g, forest_size as usize, true);
+        .filter(|g| !odd || !g.contains_loop())
+        .flat_map(|g| {
+            ForestedGraph::hairy(
+                g,
+                forest_size as usize,
+                forest_size as usize,
+                edges_on_double,
+                odd,
+                hairs,
+            )
+        })
+        .map(|fg| {
             let g = fg.filter(|f| {
                 let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
                 let gr = fg.graph().contract_multiple_neighborhoods(&forest);
@@ -208,7 +230,7 @@ fn compute_matrix(
             let mf = File::create(&filename).unwrap();
             let mut mf = BufWriter::new(mf);
             for (fg, du) in fgs.iter().zip(dus.into_iter()) {
-                writeln!(mf, "{} {du}", fg.graph()).unwrap();
+                writeln!(mf, "{} {du}", fg.graph_string()).unwrap();
             }
         }
     }
@@ -241,7 +263,11 @@ fn compute_matrix(
 
         if registry {
             let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
-            let mut mf = File::options().write(true).open(&filename).unwrap();
+            let mut mf = if du {
+                File::options().write(true).open(&filename).unwrap()
+            } else {
+                File::create(&filename).unwrap()
+            };
             mf.seek(SeekFrom::End(0)).unwrap();
             let mut mf = BufWriter::new(mf);
             writeln!(mf, "{}", graph_table).unwrap();
@@ -267,15 +293,16 @@ fn compute_matrix(
 fn compute_matrix_full(
     graphs: &[Graph],
     forest_size: u8,
-    matrix_dir: &str,
-    matrix_name: &str,
+    (matrix_dir, matrix_name): (&str, &str),
+    odd: bool,
     graph_table: Option<GraphTable>,
     transpose: bool,
     registry: bool,
 ) {
     let n_graphs = graphs.len();
     let g6s: Vec<_> = graphs
-        .iter()
+        .par_iter()
+        .filter(|g| !odd || !g.contains_loop())
         .map(|g| g.canonical_label().0.to_g6())
         .collect();
     println!("Loaded {n_graphs} graphs");
@@ -290,9 +317,9 @@ fn compute_matrix_full(
 
     let (fgs, (dus, dcs)): (Vec<_>, (Vec<_>, Vec<_>)) = graphs
         .par_iter()
-        .enumerate()
-        .map(|(_i, g)| {
-            let fc = ForestedGraph::new(g, forest_size as usize, true);
+        .filter(|g| !odd || !g.contains_loop())
+        .map(|g| {
+            let fc = ForestedGraph::new(g, forest_size as usize, true, odd);
             let g = fc.filter(|f| fc.girth(f) > 0);
             let du = g.d_unmark();
             let dc = g.d_contract();
@@ -405,14 +432,14 @@ fn compute_matrix_full(
     println!();
 }
 
-fn print_dimensions(rank: u8, three_connected: bool) {
-    let dims = compute_dimensions(&read_all_graphs(rank, three_connected));
+fn print_dimensions(rank: u8, three_connected: bool, odd: bool, hairs: u8) {
+    let dims = compute_dimensions(&read_all_graphs(rank, three_connected, hairs), odd, hairs);
     print!("e\\p\t");
     for i in 0..(2 * rank - 2) {
         print! {"{i}\t"};
     }
     println!();
-    let mut e = 2 * rank - 3;
+    let mut e = 2 * rank - 3 + hairs;
     for ds in &dims {
         print!("{e}\t");
         for d in ds {
@@ -446,7 +473,7 @@ fn main() {
     let mut rank = args.rank;
 
     if args.dimensions {
-        print_dimensions(rank, !args.all);
+        print_dimensions(rank, !args.all && args.hairs == 0, args.odd, args.hairs);
         return;
     }
 
@@ -461,26 +488,37 @@ fn main() {
     };
     let stem = if args.full {
         "f"
-    } else if args.hairy {
-        "h"
     } else if args.all {
         "a"
     } else {
         ""
     };
-    let matrix_name = format!("{prefix}{stem}r{rank}");
+    let hairs = if args.hairs > 0 {
+        format!("h{}_", args.hairs)
+    } else {
+        "".into()
+    };
+    let matrix_name = if let Some(ref graphfile) = args.graphfile {
+        let gf = Path::new(graphfile)
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy();
+        format!("{prefix}{stem}{hairs}{gf}")
+    } else {
+        format!("{prefix}{stem}{hairs}r{rank}")
+    };
 
     if args.all_excesses {
-        let graphs = read_all_graphs(rank, !args.all);
+        let graphs = read_all_graphs(rank, !args.all, args.hairs);
         for (e, gs) in graphs.iter().rev().enumerate() {
             let mn = format!("{matrix_name}_e{e}");
             for d in 1..(2 * rank - 2 - e as u8) {
                 compute_matrix(
                     gs,
-                    d,
-                    &args.matrix_dir,
-                    &mn,
+                    (d, args.hairs),
+                    (&args.matrix_dir, &mn),
                     (!args.dc, !args.du),
+                    args.odd,
                     args.registry,
                     true,
                 );
@@ -492,15 +530,29 @@ fn main() {
     let mut min_vertices = if args.full { 2 } else { 2 * rank - 2 };
     let mut max_vertices = 2 * rank - 2;
     let mut min_degree = 4 * rank / 5;
-    if args.hairy {
-        rank += 1;
-        min_vertices = 2 * rank - 3;
-        max_vertices = 2 * rank - 3;
-        min_degree = (rank - 2) / 2;
+    if args.hairs > 0 {
+        min_degree = (rank - 3) / 2;
+        rank += args.hairs;
+        min_vertices = 2 * rank - 2 - args.hairs;
+        max_vertices = 2 * rank - 2 - args.hairs;
     }
-    let mut graphs = read_graphs(rank, min_vertices, max_vertices, !args.all && !args.hairy);
-    if args.hairy {
-        graphs.retain(|g| g.contains_loop());
+    let mut graphs = if let Some(ref graphfile) = args.graphfile {
+        read_graphfile(graphfile, !args.all && args.hairs == 0)
+    } else {
+        read_graphs(
+            rank,
+            min_vertices,
+            max_vertices,
+            !args.all && args.hairs == 0,
+        )
+    };
+    if args.hairs > 0 {
+        graphs.retain(|g| {
+            (0..g.num_vertices)
+                .filter(|&v| g.adj[v as usize].count_ones() == 1)
+                .count()
+                >= args.hairs as usize
+        });
     }
 
     let degrees = args
@@ -511,14 +563,14 @@ fn main() {
         if args.full {
             let fgs: Vec<_> = graphs
                 .par_iter()
-                .map(|g| ForestedGraph::new(g, d as usize - 1, true))
+                .map(|g| ForestedGraph::new(g, d as usize - 1, true, false))
                 .collect();
             let gt = GraphTable::from_forested_graphs(fgs);
             compute_matrix_full(
                 &graphs,
                 d,
-                &args.matrix_dir,
-                &matrix_name,
+                (&args.matrix_dir, &matrix_name),
+                args.odd,
                 Some(gt),
                 args.transpose,
                 args.registry,
@@ -526,12 +578,12 @@ fn main() {
         } else {
             compute_matrix(
                 &graphs,
-                d,
-                &args.matrix_dir,
-                &matrix_name,
+                (d, args.hairs),
+                (&args.matrix_dir, &matrix_name),
                 (!args.dc, !args.du),
+                args.odd,
                 args.registry,
-                !args.hairy,
+                args.all,
             );
         }
     }
