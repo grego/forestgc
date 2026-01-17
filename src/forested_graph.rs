@@ -109,18 +109,9 @@ impl ForestedGraph {
         let unary: Vec<_> = (0..graph.num_vertices)
             .filter(|&v| graph.adj[v as usize].count_ones() == 1)
             .collect();
-        let hair_choices = ordered_ktuples(&unary, hairs as usize);
-        for h in &hair_choices {
-            if let Some(p) = hair_preserving_perms(&perms, h) {
-                let g = Self::with_autos(
-                    graph.clone(),
-                    p,
-                    min,
-                    max,
-                    forests_on_multiedges,
-                    odd,
-                    h.clone(),
-                );
+        for h in ordered_ktuples(&unary, hairs as usize) {
+            if let Some(p) = hair_preserving_perms(&perms, &h) {
+                let g = Self::with_autos(graph.clone(), p, min, max, forests_on_multiedges, odd, h);
                 graphs.push(g);
             }
         }
@@ -239,12 +230,12 @@ impl ForestedGraph {
         for &mask in &self.subforests {
             let mut col = Vec::new();
             let mut sign = 1;
-            let compl = !mask & self.edges;
+            // let compl = !mask & self.edges;
             for i in BitPositions(mask) {
                 let mut m = mask & !(1 << i);
                 if self.odd {
-                    m = everything & !mask;
-                    sign = (-1_i8).pow((((1 << i) - 1) & compl).count_ones());
+                    m = everything & !m;
+                    sign = (-1_i8).pow((((1 << i) - 1) & m).count_ones());
                 }
                 if let Some((mut f, s)) = canonical_subforest(m, &self.perms, &signs) {
                     if self.odd {
@@ -279,7 +270,15 @@ impl ForestedGraph {
         let mut signs = Vec::new();
         let everything = (1 << (self.graph.num_vertices)) - 1;
         let smaller = (1 << (self.graph.num_vertices - 2)) - 1;
-        let vertices = everything & !self.edges;
+        let mut vertices: u64 = 0;
+        if self.odd {
+            for (i, m) in self.graph.adj.iter().enumerate() {
+                if m.count_ones() >= 3 {
+                    vertices |= 1 << i;
+                }
+            }
+        }
+
         let mut oddsigns = vec![1; self.graph.num_vertices as usize];
         let mut odddeleted = vec![0; self.graph.num_vertices as usize];
         for i in BitPositions(self.edges) {
@@ -289,12 +288,6 @@ impl ForestedGraph {
             let mut g6 = g.to_g6();
 
             if !self.hairs.is_empty() {
-                // let loop_count = (0..g.num_vertices)
-                //     .filter(|&i| g.adj[i as usize].count_ones() == 1)
-                //     .count();
-                // if loop_count != 2 {
-                //     continue;
-                // }
                 let mut hairs = compose(&self.hairs, &to_canon);
                 let (c, ps) = canonical_hairs(&perms, &mut hairs);
                 if let Some(p) = c {
@@ -308,15 +301,14 @@ impl ForestedGraph {
             }
 
             if self.odd {
-                let v = to_canon
+                let (v, _) = to_canon
                     .iter()
                     .enumerate()
                     .rev()
-                    .position(|(j, v)| j != i && *v == to_canon[i])
+                    .find(|&(j, v)| j != i && *v == to_canon[i])
                     .unwrap();
-                let sign = (-1_i8).pow((((1 << v) - 1) & vertices).count_ones());
-                oddsigns.push(sign * sign_halfedges(&to_canon, &self.graph.adj));
-                odddeleted.push((1 << i) | (1 << v));
+                oddsigns[i] = sign_halfedges(&to_canon, &self.graph.adj);
+                odddeleted[i] = 1 << v;
             }
 
             if let Some(k) = contracted_graphs.iter().position(|(g, _)| g == &g6) {
@@ -351,7 +343,8 @@ impl ForestedGraph {
                 let mut m = permute_mask(mask & !(1 << i), to_canon);
                 if self.odd {
                     m = smaller & !m;
-                    sign = oddsigns[i];
+                    let os = (-1_i8).pow(((odddeleted[i] - 1) & ma).count_ones());
+                    sign = os * oddsigns[i];
                 }
                 if let Some((mut f, s)) = canonical_subforest(m, perms, &signs[j]) {
                     if self.odd {

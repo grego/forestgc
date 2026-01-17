@@ -92,7 +92,7 @@ fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8) -> Vec<Vec<Graph>
 }
 
 fn compute_dimensions(graphs: &[Vec<Graph>], odd: bool, hairs: u8) -> Vec<Vec<usize>> {
-    let mut res = vec![vec![1]];
+    let mut res = vec![vec![!odd as usize]];
     for (i, gs) in graphs.iter().enumerate() {
         let dims = gs
             .par_iter()
@@ -196,7 +196,10 @@ fn compute_matrix(
             let mf = File::create(&filename).unwrap();
             let mut mf = BufWriter::new(mf);
             for (fg, du) in fgs.iter().zip(dus.into_iter()) {
-                writeln!(mf, "{} {du}", fg.graph_string()).unwrap();
+                if du.smaller_forests().is_empty() {
+                    continue;
+                }
+                writeln!(mf, "{}{du}", fg.graph_string()).unwrap();
             }
         }
     }
@@ -442,6 +445,7 @@ fn main() {
     } else {
         ""
     };
+    let sign_convention = if args.odd { "o" } else { "" };
     let hairs = if args.hairs > 0 {
         format!("h{}_", args.hairs)
     } else {
@@ -452,9 +456,9 @@ fn main() {
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        format!("{prefix}{stem}{hairs}{gf}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{gf}")
     } else {
-        format!("{prefix}{stem}{hairs}r{rank}")
+        format!("{prefix}{stem}{sign_convention}{hairs}r{rank}")
     };
 
     if args.all_excesses {
