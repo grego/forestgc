@@ -96,7 +96,6 @@ fn compute_dimensions(graphs: &[Vec<Graph>], odd: bool, hairs: u8) -> Vec<Vec<us
     for (i, gs) in graphs.iter().enumerate() {
         let dims = gs
             .par_iter()
-            .filter(|g| !odd || !g.contains_loop())
             .map(|g| {
                 let mut dims = vec![0; i + 2];
                 let sfs = ForestedGraph::all(g, odd, hairs);
@@ -155,7 +154,6 @@ fn compute_matrix(
 
     let fgs: Vec<_> = graphs
         .par_iter()
-        .filter(|g| !odd || !g.contains_loop())
         .flat_map(|g| {
             ForestedGraph::hairy(
                 g,

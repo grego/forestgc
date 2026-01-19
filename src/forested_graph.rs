@@ -93,6 +93,12 @@ impl ForestedGraph {
         let (graph, _, perms) = g.canonical_label();
 
         let mut graphs = Vec::new();
+        let unary: Vec<_> = (0..graph.num_vertices)
+            .filter(|&v| graph.adj[v as usize].count_ones() == 1)
+            .collect();
+        if odd && unary.len() > hairs as usize {
+            return Vec::with_capacity(0);
+        }
 
         if hairs == 0 {
             return vec![Self::with_autos(
@@ -106,9 +112,6 @@ impl ForestedGraph {
             )];
         }
 
-        let unary: Vec<_> = (0..graph.num_vertices)
-            .filter(|&v| graph.adj[v as usize].count_ones() == 1)
-            .collect();
         for h in ordered_ktuples(&unary, hairs as usize) {
             if let Some(p) = hair_preserving_perms(&perms, &h) {
                 let g = Self::with_autos(graph.clone(), p, min, max, forests_on_multiedges, odd, h);
@@ -270,14 +273,6 @@ impl ForestedGraph {
         let mut signs = Vec::new();
         let everything = (1 << (self.graph.num_vertices)) - 1;
         let smaller = (1 << (self.graph.num_vertices - 2)) - 1;
-        let mut vertices: u64 = 0;
-        if self.odd {
-            for (i, m) in self.graph.adj.iter().enumerate() {
-                if m.count_ones() >= 3 {
-                    vertices |= 1 << i;
-                }
-            }
-        }
 
         let mut oddsigns = vec![1; self.graph.num_vertices as usize];
         let mut odddeleted = vec![0; self.graph.num_vertices as usize];
