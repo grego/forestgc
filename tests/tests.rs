@@ -61,6 +61,22 @@ static BENZEN_LOOP_RANK4_EDGES: &[(u8, u8)] = &[
     (2, 4),
 ];
 
+static TRIANGLES_VERTICES: u8 = 8;
+static TRIANGLES_EDGES: &[(u8, u8)] = &[
+    (0, 1),
+    (0, 2),
+    (0, 4),
+    (1, 2),
+    (1, 3),
+    (2, 3),
+    (3, 7),
+    (4, 5),
+    (4, 6),
+    (5, 6),
+    (5, 7),
+    (6, 7),
+];
+
 // subforests function
 #[test]
 fn test_subforest_petersen() {
@@ -435,6 +451,167 @@ fn test_girth_morita_rank4() {
 fn test_girth_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.girth(), 2);
+}
+
+//  neighbour_vertices function
+
+#[test]
+fn test_neighbour_vertices_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert_eq!(petersen.neighbour_vertices(0), vec![1, 4, 5]);
+    assert_eq!(petersen.neighbour_vertices(1), vec![0, 2, 6]);
+    assert_eq!(petersen.neighbour_vertices(3), vec![2, 4, 9]);
+    assert_eq!(petersen.neighbour_vertices(4), vec![0, 3, 7]);
+    assert_eq!(petersen.neighbour_vertices(6), vec![1, 7, 9]);
+    assert_eq!(petersen.neighbour_vertices(8), vec![2, 5, 7]);
+}
+
+#[test]
+fn test_neighbour_vertices_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(morita.neighbour_vertices(0), vec![1, 3, 5]);
+    assert_eq!(morita.neighbour_vertices(1), vec![0, 4, 5]);
+    assert_eq!(morita.neighbour_vertices(2), vec![3, 4, 5]);
+    assert_eq!(morita.neighbour_vertices(3), vec![0, 2, 4]);
+    assert_eq!(morita.neighbour_vertices(4), vec![1, 2, 3]);
+    assert_eq!(morita.neighbour_vertices(5), vec![0, 1, 2]);
+}
+
+#[test]
+fn test_neighbour_vertices_benzen_rank4() {
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(benzen.neighbour_vertices(0), vec![1, 4]);
+    assert_eq!(benzen.neighbour_vertices(1), vec![0, 5]);
+    assert_eq!(benzen.neighbour_vertices(2), vec![3, 4]);
+    assert_eq!(benzen.neighbour_vertices(3), vec![2, 5]);
+    assert_eq!(benzen.neighbour_vertices(4), vec![0, 2]);
+    assert_eq!(benzen.neighbour_vertices(5), vec![1, 3]);
+}
+
+// triangles function
+
+#[test]
+fn test_triangles_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert_eq!(petersen.triangles(), vec![]);
+}
+
+#[test]
+fn test_triangles_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(
+        morita.triangles(),
+        vec![
+            (1 << 6) | (1 << 8) | (1 << 10),
+            (1 << 11) | (1 << 12) | (1 << 14)
+        ]
+    );
+}
+
+#[test]
+fn test_triangles_benzen_rank4() {
+    let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
+    assert_eq!(benzen.triangles(), vec![]);
+}
+
+#[test]
+fn test_triangles_triangles() {
+    let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
+    assert_eq!(
+        triangles.triangles(),
+        vec![
+            (1 << 11) | (1 << 12) | (1 << 13),
+            (1 << 15) | (1 << 16) | (1 << 17),
+            (1 << 17) | (1 << 18) | (1 << 19),
+            (1 << 8) | (1 << 9) | (1 << 11)
+        ]
+    );
+}
+
+// has_edge_on_triangle function
+
+#[test]
+fn test_has_edge_on_triangle_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert!(!morita.has_edge_on_triangle((1 << 9) | (1 << 13) | (1 << 7))); // no edges on triangles
+    assert!(morita.has_edge_on_triangle((1 << 9) | (1 << 12) | (1 << 13))); // no edge on first trinagle, one on second
+    assert!(!morita.has_edge_on_triangle((1 << 14) | (1 << 11) | (1 << 13) | (1 << 7))); // no edge on first triangle, two on second
+    assert!(morita.has_edge_on_triangle((1 << 6) | (1 << 7) | (1 << 13))); // one edge on first triangle, none on second
+    assert!(morita.has_edge_on_triangle((1 << 9) | (1 << 10) | (1 << 12) | (1 << 13))); // one edge on first triangle, one on second
+    assert!(morita.has_edge_on_triangle((1 << 12) | (1 << 11) | (1 << 9) | (1 << 8))); // one edge on first triangle, two on second
+    assert!(!morita.has_edge_on_triangle((1 << 8) | (1 << 9) | (1 << 10))); // two edges on first triangle, none on second
+    assert!(morita.has_edge_on_triangle((1 << 8) | (1 << 9) | (1 << 10) | (1 << 11))); // two edges on first triangle, one on second
+    assert!(!morita.has_edge_on_triangle((1 << 6) | (1 << 8) | (1 << 12) | (1 << 14))); // two edges on first triangle, two on second
+}
+
+#[test]
+fn test_has_edge_on_triangle_triangles() {
+    let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
+    assert!(!triangles.has_edge_on_triangle((1 << 10) | (1 << 14))); // no edges on triangles
+    assert!(triangles.has_edge_on_triangle((1 << 8) | (1 << 9) | (1 << 14) | (1 << 19))); // no edges on first triangle, none on second, one on third, two on fourth
+    assert!(!triangles.has_edge_on_triangle((1 << 8) | (1 << 9) | (1 << 15) | (1 << 16))); // no edges on first triangle, two on second, none on third, two on fourth
+    assert!(triangles.has_edge_on_triangle((1 << 10) | (1 << 15) | (1 << 17))); // no edges on first triangle, two on second, one on third, none on fourth
+    assert!(triangles.has_edge_on_triangle((1 << 9) | (1 << 15) | (1 << 17) | (1 << 18))); // no edges on first triangle, two on second, one on third, one on fourth
+    assert!(triangles.has_edge_on_triangle((1 << 8) | (1 << 10) | (1 << 12) | (1 << 14))); // one edge on first triangle, none on second, none on third, one on fourth
+    assert!(triangles.has_edge_on_triangle((1 << 8) | (1 << 13) | (1 << 17) | (1 << 19))); // one edge on first triangle, none on second, two on third, one on fourth
+    assert!(triangles.has_edge_on_triangle((1 << 9) | (1 << 13) | (1 << 15) | (1 << 19))); // one edge on first triangle, one on second, one on third, one on fourth
+    assert!(
+        triangles.has_edge_on_triangle(
+            (1 << 8) | (1 << 9) | (1 << 12) | (1 << 15) | (1 << 17) | (1 << 18)
+        )
+    ); // one edge on first triangle, one on second, two on third, two on fourth
+    assert!(
+        triangles.has_edge_on_triangle((1 << 12) | (1 << 15) | (1 << 17) | (1 << 18) | (1 << 19))
+    ); // one edge on first triangle, two on second, two on third, none on fourth
+    assert!(triangles.has_edge_on_triangle(
+        (1 << 9) | (1 << 12) | (1 << 13) | (1 << 15) | (1 << 17) | (1 << 19)
+    )); // two edges on first triangle, two on second, one on third, one on fourth
+    assert!(!triangles.has_edge_on_triangle(
+        (1 << 8) | (1 << 9) | (1 << 11) | (1 << 13) | (1 << 16) | (1 << 17) | (1 << 19)
+    )); // two edges on first triangle, two on second, two on third, two on fourth
+}
+
+// has_two_edges_on_triangle function
+
+#[test]
+fn test_has_two_edges_on_triangle_morita_rank4() {
+    let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
+    assert!(!morita.has_two_edges_on_triangle((1 << 9) | (1 << 13) | (1 << 7))); // no edges on triangles
+    assert!(!morita.has_two_edges_on_triangle((1 << 9) | (1 << 12) | (1 << 13))); // no edge on first trinagle, one on second
+    assert!(morita.has_two_edges_on_triangle((1 << 14) | (1 << 11) | (1 << 13) | (1 << 7))); // no edge on first triangle, two on second
+    assert!(!morita.has_two_edges_on_triangle((1 << 6) | (1 << 7) | (1 << 13))); // one edge on first triangle, none on second
+    assert!(!morita.has_two_edges_on_triangle((1 << 9) | (1 << 10) | (1 << 12) | (1 << 13))); // one edge on first triangle, one on second
+    assert!(morita.has_two_edges_on_triangle((1 << 12) | (1 << 11) | (1 << 9) | (1 << 8))); // one edge on first triangle, two on second
+    assert!(morita.has_two_edges_on_triangle((1 << 8) | (1 << 9) | (1 << 10))); // two edges on first triangle, none on second
+    assert!(morita.has_two_edges_on_triangle((1 << 8) | (1 << 9) | (1 << 10) | (1 << 11))); // two edges on first triangle, one on second
+    assert!(morita.has_two_edges_on_triangle((1 << 6) | (1 << 8) | (1 << 12) | (1 << 14))); // two edges on first triangle, two on second
+}
+
+#[test]
+fn test_has_two_edges_on_triangle_triangles() {
+    let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
+    // assert!(triangles.has_two_edges_on_triangle((1 << 0) | (1 << 0)));
+    assert!(!triangles.has_two_edges_on_triangle((1 << 10) | (1 << 14))); // no edges on triangles
+    assert!(triangles.has_two_edges_on_triangle((1 << 8) | (1 << 9) | (1 << 14) | (1 << 19))); // no edges on first triangle, none on second, one on third, two on fourth
+    assert!(triangles.has_two_edges_on_triangle((1 << 8) | (1 << 9) | (1 << 15) | (1 << 16))); // no edges on first triangle, two on second, none on third, two on fourth
+    assert!(triangles.has_two_edges_on_triangle((1 << 10) | (1 << 15) | (1 << 17))); // no edges on first triangle, two on second, one on third, none on fourth
+    assert!(triangles.has_two_edges_on_triangle((1 << 9) | (1 << 15) | (1 << 17) | (1 << 18))); // no edges on first triangle, two on second, one on third, one on fourth
+    assert!(!triangles.has_two_edges_on_triangle((1 << 8) | (1 << 10) | (1 << 12) | (1 << 14))); // one edge on first triangle, none on second, none on third, one on fourth
+    assert!(triangles.has_two_edges_on_triangle((1 << 8) | (1 << 13) | (1 << 17) | (1 << 19))); // one edge on first triangle, none on second, two on third, one on fourth
+    assert!(!triangles.has_two_edges_on_triangle((1 << 9) | (1 << 13) | (1 << 15) | (1 << 19))); // one edge on first triangle, one on second, one on third, one on fourth
+    assert!(triangles.has_two_edges_on_triangle(
+        (1 << 8) | (1 << 9) | (1 << 12) | (1 << 15) | (1 << 17) | (1 << 18)
+    )); // one edge on first triangle, one on second, two on third, two on fourth
+    assert!(
+        triangles
+            .has_two_edges_on_triangle((1 << 12) | (1 << 15) | (1 << 17) | (1 << 18) | (1 << 19))
+    ); // one edge on first triangle, two on second, two on third, none on fourth
+    assert!(triangles.has_two_edges_on_triangle(
+        (1 << 9) | (1 << 12) | (1 << 13) | (1 << 15) | (1 << 17) | (1 << 19)
+    )); // two edges on first triangle, two on second, one on third, one on fourth
+    assert!(triangles.has_two_edges_on_triangle(
+        (1 << 8) | (1 << 9) | (1 << 11) | (1 << 13) | (1 << 16) | (1 << 17) | (1 << 19)
+    )); // two edges on first triangle, two on second, two on third, two on fourth
 }
 
 // find-ktuples function

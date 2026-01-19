@@ -1,5 +1,6 @@
+use rayon::iter::IntoParallelRefIterator;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::mem;
 
@@ -558,6 +559,93 @@ impl Graph {
             }
         }
         i
+    }
+
+    /// Returns the two vertices defining the given edge, panics if input has valency other then 2
+    /// Only works on graphs in the bipartite form
+    pub fn edge_vertices(&self, edge: u8) -> (u8, u8) {
+        assert!(
+            self.has_valency2(edge),
+            "Edge needs to have valency exactly 2!"
+        );
+
+        let vertices: Vec<usize> = BitPositions(self.adj[edge as usize]).collect();
+        (vertices[0] as u8, vertices[1] as u8)
+    }
+
+    /// Returns all vertex neighbours of a given vertex as a bitmask
+    /// Expects the vertex to have valency at least 3, i.e. not an edge, othervise panics
+    /// Only works on graphs in the bipartite form
+    pub fn neighbour_vertices_bitmask(&self, vertex: u8) -> u64 {
+        assert!(
+            self.has_valency(vertex, 3, 255),
+            "Vertex needs to have valency at least 3!"
+        );
+
+        let neighbours: u64 = BitPositions(self.adj[vertex as usize])
+            .map(|a| self.adj[a])
+            .reduce(|a, b| a | b)
+            .unwrap()
+            & !(1 << vertex);
+
+        neighbours
+    }
+
+    /// Returns all vertex neighbours of a given vertex
+    /// Expects the vertex to have valency at least 3, i.e. not an edge, othervise panics
+    /// Only works on graphs in the bipartite form
+    pub fn neighbour_vertices(&self, vertex: u8) -> Vec<u8> {
+        let neighbours = self.neighbour_vertices_bitmask(vertex);
+        BitPositions(neighbours).map(|a| a as u8).collect()
+    }
+
+    /// Returns all triangles of a graph given as a bitmask of 3 edges of each triangle
+    /// Only works on graphs in the bipartite form
+    pub fn triangles(&self) -> Vec<u64> {
+        let mut f: FxHashSet<u64> = FxHashSet::default();
+
+        for e in self.vertices_valency2() {
+            let (v1, v2) = self.edge_vertices(e);
+            for v in self.vertices_valency(3, 255) {
+                if v == v1 || v == v2 {
+                    continue;
+                }
+                let e1: u64 = self.adj[v as usize] & self.adj[v1 as usize];
+                let e2: u64 = self.adj[v as usize] & self.adj[v2 as usize];
+
+                for a1 in BitPositions(e1) {
+                    for a2 in BitPositions(e2) {
+                        let a: u64 = (1 << a1) | (1 << a2) | (1 << e);
+                        f.insert(a);
+                    }
+                }
+            }
+        }
+        f.iter().map(|a| *a).collect()
+    }
+
+    /// Returns whether at least one triangle in the graph has exactly one of its edges in the passed in bitmask
+    /// Only works on graphs in the bipartite form
+    pub fn has_edge_on_triangle(&self, edges: u64) -> bool {
+        let triangles = self.triangles();
+        for t in triangles {
+            if (t & edges).count_ones() == 1 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Returns whether at least one triangle in the graph has exactly two of its edges in the passed in bitmask
+    /// Only works on graphs in the bipartite form
+    pub fn has_two_edges_on_triangle(&self, edges: u64) -> bool {
+        let triangles = self.triangles();
+        for t in triangles {
+            if (t & edges).count_ones() == 2 {
+                return true;
+            }
+        }
+        false
     }
 
     // Returns the giths of a given graph, i.e. the size of the
