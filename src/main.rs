@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 
 use graphc::forested_graph::{ForestedGraph, GraphTable};
-use graphc::graph::Graph;
+use graphc::graph::{BitPositions, Graph};
 
 use argh::FromArgs;
 use std::fs::{self, File};
@@ -41,6 +41,12 @@ struct Args {
     /// compute the complex with one hair
     #[argh(switch, short = 'T')]
     transpose: bool,
+    ///compute the complex with graphs with at least this girth after contracting the subforest
+    #[argh(option, short = 'g', default = "1")]
+    girthmin: u8,
+    ///compute the complex with graphs with at most this girth after contracting the subforest
+    #[argh(option, short = 'G', default = "255")]
+    girthmax: u8,
     /// compute the complex with one hair
     #[argh(option, default = "0")]
     hairs: u8,
@@ -48,7 +54,7 @@ struct Args {
     #[argh(option, short = 'm', default = "String::from(\"matrices\")")]
     matrix_dir: String,
     /// the directory where the matrices will be output
-    #[argh(option, short = 'g')]
+    #[argh(option)]
     graphfile: Option<String>,
     /// the rank of the forested graph complex
     #[argh(positional)]
@@ -91,16 +97,35 @@ fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8) -> Vec<Vec<Graph>
     graphs
 }
 
-fn compute_dimensions(graphs: &[Vec<Graph>], odd: bool, hairs: u8) -> Vec<Vec<usize>> {
-    let mut res = vec![vec![!odd as usize]];
+fn compute_dimensions(
+    graphs: &[Vec<Graph>],
+    girthmin: u8,
+    girthmax: u8,
+    odd: bool,
+    hairs: u8,
+) -> Vec<Vec<usize>> {
+    let mut res = vec![vec![1]];
     for (i, gs) in graphs.iter().enumerate() {
         let dims = gs
             .par_iter()
             .map(|g| {
                 let mut dims = vec![0; i + 2];
                 let sfs = ForestedGraph::all(g, odd, hairs);
-                for m in sfs.iter().flat_map(|f| f.subforests()) {
-                    dims[m.count_ones() as usize] += 1;
+                for fs in sfs {
+                    let s = fs.filter(|f| {
+                        if girthmin == 1 && girthmax == 255 {
+                            return true;
+                        }
+                        let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                        let gr = fs.graph().contract_multiple_neighborhoods(&forest);
+                        let p = gr.girth();
+                        // let q = gr.vertices_valency(1, 1).len();
+                        // let q = gr.count_double_edges();
+                        p >= girthmin && p <= girthmax //&& q > 0
+                    });
+                    for m in s.subforests() {
+                        dims[m.count_ones() as usize] += 1;
+                    }
                 }
                 dims
             })
@@ -138,6 +163,7 @@ fn compute_matrix(
     (forest_size, hairs): (u8, u8),
     (matrix_dir, matrix_name): (&str, &str),
     (du, dc): (bool, bool),
+    (girthmin, girthmax): (u8, u8),
     odd: bool,
     registry: bool,
     edges_on_double: bool,
@@ -164,6 +190,20 @@ fn compute_matrix(
                 hairs,
             )
         })
+        .map(|fg| {
+            if girthmin == 1 && girthmax == 255 {
+                fg
+            } else {
+                fg.filter(|f| {
+                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                    let gr = fg.graph().contract_multiple_neighborhoods(&forest);
+                    let p = gr.girth();
+                    // let q = gr.vertices_valency(1, 1).len();
+                    // let q = gr.count_double_edges();
+                    p >= girthmin && p <= girthmax //&& q > 0
+                })
+            }
+        })
         .collect();
 
     if registry {
@@ -178,7 +218,24 @@ fn compute_matrix(
     let mut durows = 0;
     let mut columns = 0;
     if du {
-        let dus: Vec<_> = fgs.par_iter().map(ForestedGraph::d_unmark).collect();
+        let dus: Vec<_> = fgs
+            .par_iter()
+            .map(|g| {
+                let du = g.d_unmark();
+                if girthmin == 1 && girthmax == 255 {
+                    du
+                } else {
+                    du.filter(|f| {
+                        let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                        let gr = g.graph().contract_multiple_neighborhoods(&forest);
+                        let p = gr.girth();
+                        // let q = gr.vertices_valency(1, 1).len();
+                        // let q = gr.count_double_edges();
+                        p >= girthmin && p <= girthmax //&& q > 0
+                    })
+                }
+            })
+            .collect();
         for (fg, du) in fgs.iter().zip(dus.iter()) {
             for (i, j, s) in du.matrix_entries(columns, durows) {
                 writeln!(mf, "{} {} {}", i + 1, j + 1, s).unwrap();
@@ -261,6 +318,7 @@ fn compute_matrix_full(
     graphs: &[Graph],
     forest_size: u8,
     (matrix_dir, matrix_name): (&str, &str),
+    (girthmin, girthmax): (u8, u8),
     odd: bool,
     graph_table: Option<GraphTable>,
     transpose: bool,
@@ -287,9 +345,10 @@ fn compute_matrix_full(
         .filter(|g| !odd || !g.contains_loop())
         .map(|g| {
             let fc = ForestedGraph::new(g, forest_size as usize, true, odd);
-            let du = fc.d_unmark();
-            let dc = fc.d_contract();
-            (fc, (du, dc))
+            let g = fc.filter(|f| fc.girth(f) > 0);
+            let du = g.d_unmark();
+            let dc = g.d_contract();
+            (g, (du, dc))
         })
         .collect();
 
@@ -299,11 +358,32 @@ fn compute_matrix_full(
     }
     println!("Pairs graph + subforest up to iso: {}", columns);
 
+    let sfgs: Vec<_> = g6s
+        .iter()
+        .map(|s| s.as_str())
+        .zip(dus.iter().map(|du| du.smaller_forests()))
+        .map(|(g, fg)| {
+            let fr: Vec<u64> = fg
+                .iter()
+                .filter(|&&f| {
+                    if girthmin == 1 && girthmax == 255 {
+                        return true;
+                    }
+                    let graph = Graph::from_g6(g);
+                    let forest: Vec<u8> = BitPositions(f).map(|a| a as u8).collect();
+                    let gr = graph.contract_multiple_neighborhoods(&forest);
+                    let p = gr.girth();
+                    p >= girthmin && p <= girthmax
+                })
+                .copied()
+                .collect();
+            (g, fr)
+        })
+        .collect();
     let graph_table = graph_table.unwrap_or_else(|| {
         GraphTable::new(
-            fgs.iter()
-                .map(|g| g.graph().to_g6())
-                .zip(dus.iter().map(|du| du.smaller_forests()))
+            sfgs.iter()
+                .map(|(s, v)| (s.to_string(), v.as_slice()))
                 .chain(
                     dcs.iter()
                         .flat_map(|dc| dc.contracted_graphs())
@@ -382,8 +462,21 @@ fn compute_matrix_full(
     println!();
 }
 
-fn print_dimensions(rank: u8, three_connected: bool, odd: bool, hairs: u8) {
-    let dims = compute_dimensions(&read_all_graphs(rank, three_connected, hairs), odd, hairs);
+fn print_dimensions(
+    rank: u8,
+    three_connected: bool,
+    girthmin: u8,
+    girthmax: u8,
+    odd: bool,
+    hairs: u8,
+) {
+    let dims = compute_dimensions(
+        &read_all_graphs(rank, three_connected, hairs),
+        girthmin,
+        girthmax,
+        odd,
+        hairs,
+    );
     print!("e\\p\t");
     for i in 0..(2 * rank - 2) {
         print! {"{i}\t"};
@@ -422,8 +515,20 @@ fn main() {
     let args: Args = argh::from_env();
     let mut rank = args.rank;
 
+    if args.girthmax < args.girthmin {
+        print!("Maximum girth can not be less than minimum girth!");
+        return;
+    }
+
     if args.dimensions {
-        print_dimensions(rank, !args.all && args.hairs == 0, args.odd, args.hairs);
+        print_dimensions(
+            rank,
+            !args.all && args.hairs == 0,
+            args.girthmin,
+            args.girthmax,
+            args.odd,
+            args.hairs,
+        );
         return;
     }
 
@@ -449,14 +554,24 @@ fn main() {
     } else {
         "".into()
     };
+    let girthmin = if args.girthmin > 1 {
+        format!("g{}_", args.girthmin)
+    } else {
+        "".into()
+    };
+    let girthmax = if args.girthmax < 255 {
+        format!("G{}_", args.girthmax)
+    } else {
+        "".into()
+    };
     let matrix_name = if let Some(ref graphfile) = args.graphfile {
         let gf = Path::new(graphfile)
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        format!("{prefix}{stem}{sign_convention}{hairs}{gf}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}{gf}")
     } else {
-        format!("{prefix}{stem}{sign_convention}{hairs}r{rank}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}r{rank}")
     };
 
     if args.all_excesses {
@@ -469,6 +584,7 @@ fn main() {
                     (d, args.hairs),
                     (&args.matrix_dir, &mn),
                     (!args.dc, !args.du),
+                    (args.girthmin, args.girthmax),
                     args.odd,
                     args.registry,
                     true,
@@ -521,6 +637,7 @@ fn main() {
                 &graphs,
                 d,
                 (&args.matrix_dir, &matrix_name),
+                (args.girthmin, args.girthmax),
                 args.odd,
                 Some(gt),
                 args.transpose,
@@ -532,6 +649,7 @@ fn main() {
                 (d, args.hairs),
                 (&args.matrix_dir, &matrix_name),
                 (!args.dc, !args.du),
+                (args.girthmin, args.girthmax),
                 args.odd,
                 args.registry,
                 args.all,

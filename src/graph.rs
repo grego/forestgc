@@ -900,7 +900,7 @@ impl Graph {
         true
     }
 
-    /// Returns whether a graph is 3-edge connected
+    /// Returns whether a graph is 3-vertex connected
     /// Expected to be called on simple 3 valent graph only and in the bipartite form!
     pub fn is_3vertex_connected(&self) -> bool {
         let vertices = self.vertices_valency(3, 255);

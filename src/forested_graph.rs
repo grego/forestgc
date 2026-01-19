@@ -393,6 +393,22 @@ impl ForestedGraph {
         }
     }
 
+    /// Returns the girth of the graph after contracting the given forest
+    pub fn girth(&self, forest: u64) -> u8 {
+        let ddd: Vec<u8> = BitPositions(forest).map(|a| a as u8).collect();
+        let fff = self.graph().contract_multiple_neighborhoods(&ddd);
+        let p = fff.girth();
+        p
+    }
+
+    /// Return the number of loops in the graph after contracting the given forest
+    pub fn loops(&self, forest: u64) -> u8 {
+        let ddd: Vec<u8> = BitPositions(forest).map(|a| a as u8).collect();
+        let fff = self.graph().contract_multiple_neighborhoods(&ddd);
+        let p = fff.vertices_valency(1, 1).len() as u8;
+        p
+    }
+
     pub fn graph_string(&self) -> String {
         let mut f = String::new();
         write!(f, "{}", self.graph).unwrap();
