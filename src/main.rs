@@ -162,12 +162,14 @@ fn compute_matrix(
     graphs: &[Graph],
     (forest_size, hairs): (u8, u8),
     (matrix_dir, matrix_name): (&str, &str),
-    (du, dc): (bool, bool),
-    (girthmin, girthmax): (u8, u8),
-    odd: bool,
-    registry: bool,
     edges_on_double: bool,
+    args: &Args,
 ) {
+    let (du, dc) = (!args.dc, !args.du);
+    let (girthmin, girthmax) = (args.girthmin, args.girthmax);
+    let odd = args.odd;
+    let registry = args.registry;
+
     let n_graphs = graphs.len();
     println!("Loaded {n_graphs} graphs");
 
@@ -318,12 +320,14 @@ fn compute_matrix_full(
     graphs: &[Graph],
     forest_size: u8,
     (matrix_dir, matrix_name): (&str, &str),
-    (girthmin, girthmax): (u8, u8),
-    odd: bool,
     graph_table: Option<GraphTable>,
-    transpose: bool,
-    registry: bool,
+    args: &Args,
 ) {
+    let (girthmin, girthmax) = (args.girthmin, args.girthmax);
+    let odd = args.odd;
+    let registry = args.registry;
+    let transpose = args.transpose;
+
     let n_graphs = graphs.len();
     let g6s: Vec<_> = graphs
         .par_iter()
@@ -579,16 +583,7 @@ fn main() {
         for (e, gs) in graphs.iter().rev().enumerate() {
             let mn = format!("{matrix_name}_e{e}");
             for d in 1..(2 * rank - 2 - e as u8) {
-                compute_matrix(
-                    gs,
-                    (d, args.hairs),
-                    (&args.matrix_dir, &mn),
-                    (!args.dc, !args.du),
-                    (args.girthmin, args.girthmax),
-                    args.odd,
-                    args.registry,
-                    true,
-                );
+                compute_matrix(gs, (d, args.hairs), (&args.matrix_dir, &mn), true, &args);
             }
         }
         return;
@@ -637,22 +632,16 @@ fn main() {
                 &graphs,
                 d,
                 (&args.matrix_dir, &matrix_name),
-                (args.girthmin, args.girthmax),
-                args.odd,
                 Some(gt),
-                args.transpose,
-                args.registry,
+                &args,
             );
         } else {
             compute_matrix(
                 &graphs,
                 (d, args.hairs),
                 (&args.matrix_dir, &matrix_name),
-                (!args.dc, !args.du),
-                (args.girthmin, args.girthmax),
-                args.odd,
-                args.registry,
                 args.all,
+                &args,
             );
         }
     }

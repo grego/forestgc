@@ -1,6 +1,5 @@
-use rayon::iter::IntoParallelRefIterator;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::mem;
 
@@ -621,7 +620,7 @@ impl Graph {
                 }
             }
         }
-        f.iter().map(|a| *a).collect()
+        f.iter().copied().collect()
     }
 
     /// Returns whether at least one triangle in the graph has exactly one of its edges in the passed in bitmask
