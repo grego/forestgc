@@ -2,15 +2,15 @@
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::mem;
 use std::path::Path;
 use std::time::Instant;
+use std::{array, mem};
 
 use argh::FromArgs;
 use rayon::prelude::*;
 
 use graphc::graph::BigGraph;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Forested graph complex computations.
 #[derive(FromArgs)]
@@ -230,8 +230,10 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
             };
 
             let mut indices = FxHashSet::default();
-            let mut stack = Vec::new();
+            // operations relevant to the current row
             let mut rops = Vec::new();
+            // stack of indices of the current row operations
+            let mut stack = Vec::new();
             for &([_, j], _) in &entries {
                 stack.push(j);
                 indices.insert(j);
@@ -254,6 +256,10 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
                         }
                         ii += 1;
                     }
+
+                    if i == 0 {
+                        continue;
+                    }
                     let mut ii = i - 1;
                     while let Some(([jj, j1], [s0, s1])) = ops.get(ii)
                         && *jj == j
@@ -261,6 +267,9 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
                         rops.push(([*jj, *j1], [*s0, *s1]));
                         if indices.insert(*j1) {
                             stack.push(*j1);
+                        }
+                        if ii == 0 {
+                            break;
                         }
                         ii -= 1;
                     }
@@ -330,20 +339,131 @@ fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
     println! {"divided {divided} cols, max by {max}"};
 }
 
-fn count_2cols(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
+fn count_statistics(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
     let mut counts = vec![0; y];
     for &([_, j], _) in m {
         counts[j as usize - 1] += 1;
     }
 
+    const THRESHOLD: usize = 1000;
     let mut c = 0;
     let min = counts.iter().min().copied().unwrap_or(0);
+    let max = counts.iter().max().copied().unwrap_or(0);
+    let mut large = 0;
     for &cc in &counts {
         if cc == min {
             c += 1;
         }
+        if cc > THRESHOLD {
+            large += 1;
+        }
     }
-    println! {"remaing {c} columns with {min} entries"};
+    drop(counts);
+
+    println!("remaing {c} columns with {min} entries");
+    println!("{large} columns with over {THRESHOLD} entries, max {max}");
+}
+
+/// Delete duplicate rows of size N.
+fn delete_duplicate_rows<const N: usize>(
+    m: &mut Vec<([u32; 2], i32)>,
+    [x, _]: [usize; 2],
+) -> usize {
+    let mut rcounts = vec![0; x];
+    for &([i, _], _) in m.iter() {
+        rcounts[i as usize - 1] += 1;
+    }
+
+    let mut minrows = 0;
+    for &rc in &rcounts {
+        if rc == N {
+            minrows += 1;
+        }
+    }
+    println!("remaining {minrows} rows with {N} entries");
+
+    let mut rowdelete = vec![false; x + 1];
+    let mut rowset: FxHashMap<_, Vec<_>> = FxHashMap::default();
+    let mut iter = m
+        .iter()
+        .filter(|&([i, _], _)| rcounts[*i as usize - 1] == N)
+        .map(|&([r, i], si)| (r, i, si));
+    let mut next_touple = || {
+        let mut t = [Default::default(); N];
+        for i in 0..N {
+            t[i] = iter.next()?;
+        }
+        Some(t)
+    };
+    let mut duplicities = 0;
+    'outer: while let Some(t) = next_touple() {
+        let r = t[0].0;
+
+        let indices: [_; N] = array::from_fn(|i| t[i].1);
+        let mut values: [_; N] = array::from_fn(|i| t[i].2);
+
+        let mut g = gcd_array(&values);
+        if values[0] < 0 {
+            g *= -1;
+        }
+        if g != 1 {
+            for i in 0..N {
+                values[i] /= g;
+            }
+        }
+        let entries = rowset.entry(indices).or_default();
+        for chunk in entries.chunks(N) {
+            if chunk == values {
+                duplicities += 1;
+                rowdelete[r as usize] = true;
+                continue 'outer;
+            }
+        }
+        entries.extend_from_slice(&values);
+    }
+
+    let mut double_counts = 0;
+    let mut more_counts = 0;
+    let mut max = 0;
+    for (_, c) in rowset {
+        let count = c.len() / N;
+        if count > 2 {
+            more_counts += 1;
+        } else if count == 2 {
+            double_counts += 1;
+        }
+        max = max.max(c.len() / N);
+    }
+    println!(
+        "{double_counts} double duplicities, {more_counts} more duplicities, max {max}, duplicate rows {duplicities}"
+    );
+
+    let mut shift = 0;
+    let rindices: Vec<u32> = (0..(x as u32 + 1))
+        .map(|i| {
+            if rowdelete[i as usize] {
+                shift += 1;
+                u32::MAX
+            } else {
+                i - shift
+            }
+        })
+        .collect();
+
+    let mb = mem::take(m);
+    let mut rows = 0;
+    *m = mb
+        .into_iter()
+        .filter_map(|([i, j], s)| {
+            if rowdelete[i as usize] {
+                None
+            } else {
+                rows = rindices[i as usize];
+                Some(([rows, j], s))
+            }
+        })
+        .collect();
+    rows as usize
 }
 
 fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)>) {
@@ -400,7 +520,13 @@ fn main() {
         return;
     }
 
-    let file = File::open(&args.filename).unwrap();
+    let file = match File::open(&args.filename) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Error reading {}: {e}", &args.filename);
+            return;
+        }
+    };
     let mut reader = BufReader::with_capacity(500_000_000, file);
     let (mut dims, mut lines) = read_sms_file(&mut reader);
     println!("Read {}", &args.filename);
@@ -526,7 +652,17 @@ fn main() {
     //     nz += 1;
     // }
 
-    count_2cols(&lines, dims);
+    dims[0] = delete_duplicate_rows::<3>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<4>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<5>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<6>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<7>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<8>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<9>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<10>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<11>(&mut lines, dims);
+    dims[0] = delete_duplicate_rows::<12>(&mut lines, dims);
+    count_statistics(&lines, dims);
     println!("Final dimensions: {} {}", dims[0], dims[1]);
     // dbg!(nnzs);
     {
@@ -568,9 +704,8 @@ fn main() {
         (1, Vec::with_capacity(0))
     };
 
-    println!("{nc} block components");
-
     if nc > 1 {
+        println!("{nc} block components");
         for c in 1..=nc {
             let mut remap = [vec![0; dims[0]], vec![0; dims[1]]];
             let mut x = 0;
@@ -717,4 +852,12 @@ fn gcd(a: i32, b: i32) -> i32 {
         }
         t = (t.1 % t.0, t.0);
     }
+}
+
+fn gcd_array<const N: usize>(a: &[i32; N]) -> i32 {
+    let mut g = a[0].abs();
+    for i in 1..N {
+        g = gcd(g, a[i]);
+    }
+    g
 }
