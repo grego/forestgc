@@ -1,7 +1,8 @@
 use argh::FromArgs;
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::collections::{HashMap, HashSet};
+
 
 /// Scale a vector to an expanded typed basis.
 #[derive(FromArgs)]
@@ -94,6 +95,19 @@ fn make_suffixed_filename(input_path: &str, suffix: &str) -> String {
     parent.join(new_name).to_string_lossy().to_string()
 }
 
+fn validate_expanded_basis_contains_original( basis: &[(String, String)], expanded_basis: &[(String, String)],) {
+        let expanded_set: HashSet<(String, String)> = expanded_basis.iter().cloned().collect();
+
+        let missing: Vec<(String, String)> = basis.iter().cloned().filter(|elem| !expanded_set.contains(elem)).collect();
+        if !missing.is_empty() {
+            eprintln!("Error: expanded basis is missing the following elements:");
+            for (ty, elem) in missing {
+                eprintln!("  ({}, {})", ty, elem);
+            }
+            std::process::exit(1);
+        }
+}
+
 fn main() {
     let args: Args = argh::from_env();
 
@@ -118,7 +132,10 @@ fn main() {
         );
     }
 
-    // --- Compute support (non-zero part) ---
+    // Validate that file 3 contains file 2
+    validate_expanded_basis_contains_original(&basis, &expanded_basis);
+
+    // Compute support (non-zero part)
     let mut supp_coeffs = Vec::new();
     let mut supp_basis = Vec::new();
 
