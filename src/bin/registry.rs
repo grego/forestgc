@@ -10,6 +10,11 @@ fn main() {
     };
     let (graphs, indices, forests) =
         read_registry(BufReader::new(File::open(regfile).unwrap())).unwrap();
+    println!(
+        "read {} graphs with {} subforests",
+        graphs.len(),
+        forests.len()
+    );
     for line in stdin().lock().lines() {
         let line = line.unwrap();
         let index: usize = match line.parse::<usize>() {

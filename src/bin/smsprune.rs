@@ -798,18 +798,18 @@ fn prune_registry(old: &Path, new: &Path, pruned: &[usize]) {
     let (graphs, indices, forests) = read_registry(file).unwrap();
     let file = File::create(new).unwrap();
     let mut file = BufWriter::with_capacity(500_000_000, file);
-    let mut metaidx = 1;
-    let mut idx = indices[metaidx];
+    let mut next_graph_idx = 1;
+    let mut next_idx = indices[next_graph_idx];
     dbg!((graphs.len(), indices.len(), forests.len()));
     write!(file, "{}", graphs[0]).unwrap();
     for &j in pruned {
-        if j >= idx {
-            writeln!(file).unwrap();
-            write!(file, "{}", graphs[metaidx]).unwrap();
+        if j >= next_idx {
             loop {
-                metaidx += 1;
-                idx = indices[metaidx];
-                if idx > j {
+                next_graph_idx += 1;
+                next_idx = indices[next_graph_idx];
+                if next_idx > j {
+                    writeln!(file).unwrap();
+                    write!(file, "{}", graphs[next_graph_idx - 1]).unwrap();
                     break;
                 };
             }
