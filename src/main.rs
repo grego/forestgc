@@ -443,14 +443,16 @@ fn compute_matrix_full(
     println!("{} written", &filename);
 
     if registry {
-        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.cols");
+        let cols = if transpose { "cols" } else { "rows" };
+        let rows = if transpose { "rows" } else { "cols" };
+        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}{t}.{cols}");
         let mf = File::create(&filename).unwrap();
         let mut mf = BufWriter::new(mf);
         for fg in fgs.iter().filter(|g| !g.subforests().is_empty()) {
             writeln!(mf, "{fg}").unwrap();
         }
 
-        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
+        let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}{t}.{rows}");
         let mf = File::create(&filename).unwrap();
         let mut mf = BufWriter::new(mf);
         writeln!(mf, "{}", graph_table).unwrap();

@@ -676,6 +676,9 @@ impl Display for UnmarkDifferential {
 impl Display for GraphTable {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for (i, fs) in self.forests.iter().enumerate() {
+            if fs.is_empty() {
+                continue;
+            }
             if let Some((g, _)) = self.graphs.iter().find(|(_, j)| **j == i) {
                 write!(f, "{g}")?;
             }
