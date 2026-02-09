@@ -533,7 +533,16 @@ impl Graph {
     /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
     /// Only works on graphs in the bipartite form
     pub fn contains_loop(&self) -> bool {
-        !self.vertices_valency(1, 1).is_empty()
+        (0..self.num_vertices)
+            .find(|&v| self.adj[v as usize].count_ones() == 1)
+            .is_some()
+    }
+
+    /// Return the number of loops in the given graph
+    pub fn number_of_loops(&self) -> u8 {
+        (0..self.num_vertices)
+            .filter(|&v| self.adj[v as usize].count_ones() == 1)
+            .count() as u8
     }
 
     /// Returns whether a graph contains a pair of vertices with more then one edge between them

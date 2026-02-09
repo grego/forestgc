@@ -47,13 +47,13 @@ struct Args {
     ///compute the complex with graphs with at most this girth after contracting the subforest
     #[argh(option, short = 'G', default = "255")]
     girthmax: u8,
-    /// compute the complex with one hair
+    /// compute the complex with the provided number of hairs
     #[argh(option, default = "0")]
     hairs: u8,
     /// the directory where the matrices will be output
     #[argh(option, short = 'm', default = "String::from(\"matrices\")")]
     matrix_dir: String,
-    /// the directory where the matrices will be output
+    /// the file to load the graphs from
     #[argh(option)]
     graphfile: Option<String>,
     /// the rank of the forested graph complex
@@ -64,22 +64,26 @@ struct Args {
     degree: Option<u8>,
 }
 
-fn read_graphfile(filename: &str, three_connected: bool) -> Vec<Graph> {
-    let file = File::open(filename).unwrap();
+fn read_graphfile(filename: &str, three_connected: bool, hairs: u8) -> Vec<Graph> {
+    let file = match File::open(filename) {
+        Ok(file) => file,
+        Err(e) => panic!("Unable to open {filename}: {e}"),
+    };
     let reader = BufReader::new(file);
     let g6s = reader.lines().collect::<Result<Vec<_>, _>>().unwrap();
     g6s.par_iter()
         .map(|g6| Graph::from_g6(g6))
         .filter(|g| !three_connected || g.is_3edge_connected())
+        .filter(|g| hairs == 0 || g.number_of_loops() >= hairs)
         .collect()
 }
 
 /// Read the grapsh of the specified rank with the specified number of vertices.
-fn read_graphs(rank: u8, minv: u8, maxv: u8, three_connected: bool) -> Vec<Graph> {
+fn read_graphs(rank: u8, minv: u8, maxv: u8, three_connected: bool, hairs: u8) -> Vec<Graph> {
     let mut graphs = Vec::new();
     for i in minv..=maxv {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
-        let mut gs = read_graphfile(&filename, three_connected);
+        let mut gs = read_graphfile(&filename, three_connected, hairs);
         graphs.append(&mut gs);
     }
     graphs
@@ -91,7 +95,7 @@ fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8) -> Vec<Vec<Graph>
     let rank = rank + hairs;
     for i in 2..=(2 * rank - 2 - hairs) {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
-        let gs = read_graphfile(&filename, three_connected);
+        let gs = read_graphfile(&filename, three_connected, hairs);
         graphs.push(gs);
     }
     graphs
@@ -601,13 +605,14 @@ fn main() {
         max_vertices = 2 * rank - 2 - args.hairs;
     }
     let mut graphs = if let Some(ref graphfile) = args.graphfile {
-        read_graphfile(graphfile, !args.all && args.hairs == 0)
+        read_graphfile(graphfile, !args.all && args.hairs == 0, args.hairs)
     } else {
         read_graphs(
             rank,
             min_vertices,
             max_vertices,
             !args.all && args.hairs == 0,
+            args.hairs,
         )
     };
     if args.hairs > 0 {

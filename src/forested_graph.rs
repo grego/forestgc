@@ -407,6 +407,8 @@ impl ForestedGraph {
         fff.vertices_valency(1, 1).len() as u8
     }
 
+    /// Return the G6 string of the underlying graph, possibly with hexadecimal values for hairs
+    /// indicated after the `-` character.
     pub fn graph_string(&self) -> String {
         let mut f = String::new();
         write!(f, "{}", self.graph).unwrap();
