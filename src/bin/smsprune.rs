@@ -2,9 +2,10 @@
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::iter;
+use std::mem;
 use std::path::Path;
 use std::time::Instant;
-use std::{array, mem};
 
 use argh::FromArgs;
 use rayon::prelude::*;
@@ -44,7 +45,8 @@ struct Args {
 }
 
 /// Prune the matrix by deleting all rows/columns containing a single non-zero entry
-/// and the columns/rows where the entry is.
+/// and the column/row where the entry is.
+/// BY_COLUMNS specifies whether we prune rows or columns.
 fn prune_matrix<const BY_COLUMNS: usize>(
     m: &mut Vec<([u32; 2], i32)>,
     dims: [usize; 2],
@@ -129,7 +131,7 @@ fn prune_matrix<const BY_COLUMNS: usize>(
 /// For the rows which have 2 nonzero entries, zero the first entry by adding the appropriate
 /// multiple of the first column to the second.
 ///
-/// Returns true if something was merged.
+/// Returns the new dimensions.
 fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     let mut ii = 1;
     let mut nz = 0;
@@ -364,79 +366,257 @@ fn count_statistics(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
     println!("{large} columns with over {THRESHOLD} entries, max {max}");
 }
 
-/// Delete duplicate rows of size N.
-fn delete_duplicate_rows<const N: usize>(
-    m: &mut Vec<([u32; 2], i32)>,
-    [x, _]: [usize; 2],
-) -> usize {
-    let mut rcounts = vec![0; x];
-    for &([i, _], _) in m.iter() {
-        rcounts[i as usize - 1] += 1;
-    }
-
-    let mut minrows = 0;
-    for &rc in &rcounts {
-        if rc == N {
-            minrows += 1;
-        }
-    }
-    println!("remaining {minrows} rows with {N} entries");
-
-    let mut rowdelete = vec![false; x + 1];
+/// Delete duplicate rows of size.
+fn delete_duplicate_rows(m: &mut Vec<([u32; 2], i32)>, [x, _]: [usize; 2]) -> (usize, bool) {
     let mut rowset: FxHashMap<_, Vec<_>> = FxHashMap::default();
-    let mut iter = m
-        .iter()
-        .filter(|&([i, _], _)| rcounts[*i as usize - 1] == N)
-        .map(|&([r, i], si)| (r, i, si));
-    let mut next_touple = || {
-        let mut t = [Default::default(); N];
-        for i in 0..N {
-            t[i] = iter.next()?;
-        }
-        Some(t)
-    };
     let mut duplicities = 0;
-    'outer: while let Some(t) = next_touple() {
-        let r = t[0].0;
 
-        let indices: [_; N] = array::from_fn(|i| t[i].1);
-        let mut values: [_; N] = array::from_fn(|i| t[i].2);
+    let mut col_indices = Vec::new();
+    let mut values = Vec::new();
+    let mut ri = 1;
+    let mut eliminated = false;
 
-        let mut g = gcd_array(&values);
-        if values[0] < 0 {
-            g *= -1;
-        }
-        if g != 1 {
-            for i in 0..N {
-                values[i] /= g;
+    let mut shift = 0;
+    // chain to also consider the last row
+    for ([i, j], s) in mem::take(m)
+        .into_iter()
+        .chain(iter::once(([x as u32 + 1, 0], 0)))
+    {
+        if i > ri {
+            let mut g = values.iter().copied().fold(0, gcd);
+            if values[0] < 0 {
+                g *= -1;
             }
-        }
-        let entries = rowset.entry(indices).or_default();
-        for chunk in entries.chunks(N) {
-            if chunk == values {
-                duplicities += 1;
-                rowdelete[r as usize] = true;
-                continue 'outer;
+            if g != 1 {
+                for v in values.iter_mut() {
+                    *v /= g;
+                }
             }
+            let entries = rowset.entry(col_indices.clone()).or_default();
+
+            let mut rowdelete = false;
+            for chunk in entries.chunks(values.len()) {
+                if chunk == values {
+                    duplicities += 1;
+                    rowdelete = true;
+                    break;
+                }
+            }
+            if rowdelete {
+                shift += 1;
+            } else {
+                // find the maximum non-zeros we can get by adding a previous row
+                // to this one
+                let (mut max, mut ma, mut mb, mut mchui) = (0, 0, 0, 0);
+                let len = values.len();
+                for (i, chunk) in entries.chunks(len).enumerate() {
+                    for (&x, &y) in values.iter().zip(chunk.iter()) {
+                        let g = gcd(x, y);
+                        let (a, b) = (y / g, -x / g);
+                        let mut zeros = 0;
+                        for (&x, &y) in values.iter().zip(chunk.iter()) {
+                            if a * x + b * y == 0 {
+                                zeros += 1;
+                            }
+                        }
+                        if zeros > max {
+                            max = zeros;
+                            ma = a;
+                            mb = b;
+                            mchui = i;
+                        }
+                    }
+                }
+                entries.extend_from_slice(&values);
+                if max > 0 {
+                    eliminated = true;
+
+                    // println!("len {}, max {max}, {ma}*x + {mb}*y", values.len());
+                    for (v, &x) in values.iter_mut().zip(&entries[mchui * len..]) {
+                        *v = ma * *v + mb * x;
+                    }
+                    let g = values.iter().copied().fold(0, gcd);
+                    if g != 1 {
+                        for v in values.iter_mut() {
+                            *v /= g;
+                        }
+                    }
+                    // dbg!(&values);
+                }
+
+                for (j, s) in col_indices.drain(..).zip(values.drain(..)) {
+                    if s != 0 {
+                        m.push(([ri - shift, j], s));
+                    }
+                }
+            }
+
+            col_indices.drain(..);
+            values.drain(..);
+            ri = i;
         }
-        entries.extend_from_slice(&values);
+        col_indices.push(j);
+        values.push(s);
     }
 
     let mut double_counts = 0;
     let mut more_counts = 0;
     let mut max = 0;
-    for (_, c) in rowset {
-        let count = c.len() / N;
+    for (k, c) in rowset {
+        let count = c.len() / k.len();
         if count > 2 {
             more_counts += 1;
         } else if count == 2 {
             double_counts += 1;
         }
-        max = max.max(c.len() / N);
+        max = max.max(c.len() / k.len());
     }
-    println!(
-        "{double_counts} double duplicities, {more_counts} more duplicities, max {max}, duplicate rows {duplicities}"
-    );
+    println!("{duplicities} duplicate rows found");
+    println!("{double_counts} pairs of rows with the same nonzero positions");
+    println!("{more_counts} k-tuples with the same nonzero positions (k > 2), max {max}");
+
+    (x - shift as usize, eliminated)
+}
+fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize {
+    let mut row_indices = vec![Default::default(); x + 1];
+    let mut col_indices = vec![Vec::default(); y + 1];
+
+    let mut ri = 0;
+    for (k, &([i, j], _)) in m.iter().enumerate() {
+        col_indices[j as usize].push(i);
+        if i > ri {
+            row_indices[i as usize] = k;
+            ri = i;
+        }
+    }
+    row_indices.push(m.len());
+
+    let row_iter = |i: usize| {
+        m[row_indices[i]..row_indices[i + 1]]
+            .iter()
+            .map(|&([_, j], _)| j)
+    };
+
+    let rowdelete: Vec<_> = (0..=x)
+        .into_par_iter()
+        .map(|i| {
+            let mut checked_rows = FxHashSet::default();
+
+            for j in row_iter(i) {
+                for &ii in col_indices[j as usize].iter().filter(|&&ii| ii > i as u32) {
+                    if !checked_rows.insert(ii) {
+                        return false;
+                    }
+
+                    let mut piv_i = u32::MAX;
+                    for k in row_iter(i) {
+                        if row_iter(ii as usize)
+                            .take_while(|&l| l <= k)
+                            .find(|&l| l == k)
+                            .is_none()
+                        {
+                            piv_i = k;
+                            break;
+                        }
+                    }
+                    let mut piv_ii = u32::MAX;
+                    for k in row_iter(ii as usize) {
+                        if row_iter(i)
+                            .take_while(|&l| l <= k)
+                            .find(|&l| l == k)
+                            .is_none()
+                        {
+                            piv_ii = k;
+                            break;
+                        }
+                    }
+                    let (i, ii, piv_i, mut piv_ii) = if piv_i != u32::MAX {
+                        (i, ii as usize, piv_i, piv_ii)
+                    } else {
+                        (ii as usize, i, piv_ii, piv_i)
+                    };
+                    if piv_i == u32::MAX {
+                        println!("a pair of rows doesn't have disjoint elements");
+                        // dbg!(&m[row_indices[i]..row_indices[i + 1]]);
+                        // dbg!(&m[row_indices[ii as usize]..row_indices[ii as usize + 1]]);
+                        continue;
+                    }
+                    if piv_ii == u32::MAX {
+                        piv_ii = row_iter(ii).next().unwrap();
+                    }
+                    let cols = (&col_indices[piv_i as usize], &col_indices[piv_ii as usize]);
+
+                    let mut indices: Vec<_> = row_iter(i).chain(row_iter(ii)).collect();
+                    indices.sort_unstable();
+                    indices.dedup();
+                    let piv_i = indices.binary_search(&piv_i).unwrap();
+                    let piv_ii = indices.binary_search(&piv_ii).unwrap();
+
+                    let mut i_vec = vec![0; indices.len()];
+                    for &([_, j], s) in &m[row_indices[i]..row_indices[i + 1]] {
+                        let k = indices.binary_search(&j).unwrap();
+                        i_vec[k] = s;
+                    }
+                    let mut ii_vec = vec![0; indices.len()];
+                    for &([_, j], s) in &m[row_indices[ii as usize]..row_indices[ii as usize + 1]] {
+                        let k = indices.binary_search(&j).unwrap();
+                        ii_vec[k] = s;
+                    }
+
+                    let g = gcd(i_vec[piv_i], ii_vec[piv_ii]);
+
+                    let mut k = cols.0.binary_search(&(i as u32)).unwrap_or(0) + 1;
+                    let mut l = match cols.1.binary_search(&(i as u32)) {
+                        Ok(l) => l + 1,
+                        Err(l) => l,
+                    };
+                    'outer: while k < cols.0.len() && l < cols.1.len() {
+                        if cols.0[k] == cols.1[l] {
+                            let r = cols.0[k];
+                            k += 1;
+                            l += 1;
+
+                            let mut r_vec = vec![0; indices.len()];
+                            for &([_, j], s) in
+                                &m[row_indices[r as usize]..row_indices[r as usize + 1]]
+                            {
+                                let Ok(rk) = indices.binary_search(&j) else {
+                                    continue;
+                                };
+                                r_vec[rk] = s * g;
+                            }
+
+                            if r_vec[piv_i] % i_vec[piv_i] != 0 {
+                                continue;
+                            }
+                            let mi = r_vec[piv_i] / i_vec[piv_i];
+
+                            let rii = r_vec[piv_ii] - mi * i_vec[piv_ii];
+                            if rii % ii_vec[piv_ii] != 0 {
+                                continue;
+                            }
+                            let mii = rii / ii_vec[piv_ii];
+
+                            for j in 0..indices.len() {
+                                if mi * i_vec[j] + mii * ii_vec[j] != r_vec[j] {
+                                    continue 'outer;
+                                }
+                            }
+                            // found linearly dependent rows
+                            // dbg!((&i_vec, &ii_vec, &r_vec));
+                            // dbg!((mi, mii));
+                            return true;
+                        } else if cols.0[k] < cols.1[l] {
+                            k += 1;
+                        } else {
+                            l += 1;
+                        }
+                    }
+                }
+            }
+            false
+        })
+        .collect();
 
     let mut shift = 0;
     let rindices: Vec<u32> = (0..(x as u32 + 1))
@@ -473,13 +653,9 @@ fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)
         .map(|s| {
             let s = s.unwrap();
             let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
-            (
-                [
-                    numbers.next().unwrap() as u32,
-                    numbers.next().unwrap() as u32,
-                ],
-                numbers.next().unwrap() as i32,
-            )
+            let i = numbers.next().unwrap() as u32;
+            let j = numbers.next().unwrap() as u32;
+            ([i, j], numbers.next().unwrap() as i32)
         })
         .collect::<Vec<_>>();
     lines.pop();
@@ -488,6 +664,7 @@ fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)
         .split_whitespace()
         .map(|i| i.parse::<usize>().unwrap());
     let dims = [dims_iter.next().unwrap(), dims_iter.next().unwrap()];
+    // let dims = [dims[1], dims[0]];
 
     (dims, lines)
 }
@@ -590,20 +767,42 @@ fn main() {
             }
             dims = ndims;
         }
+
+        let mut two_pruned = false;
         if args.twocol {
             let ndims = merge_2cols(&mut lines, dims);
             dbg!(ndims);
-            if ndims == dims {
-                break;
+            if ndims != dims {
+                two_pruned = true;
+                dims = ndims;
+                divide_cols(&mut lines, dims);
             }
-            dims = ndims;
-        } else {
+        }
+
+        let mut reprune = false;
+        if !two_pruned {
+            loop {
+                let (nrows, eliminated) = delete_duplicate_rows(&mut lines, dims);
+                dims[0] = nrows;
+                if eliminated == false {
+                    break;
+                }
+                reprune = true
+            }
+        }
+
+        if !two_pruned && !reprune {
             break;
         }
-        // dbg!(&lines);
-        println!("merged columns for rows with 2 entries");
-        divide_cols(&mut lines, dims);
     }
+
+    let nrows = prune_ld_triplets(&mut lines, dims);
+    println!(
+        "deleted {} rows from linearly dependent triplets",
+        dims[0] - nrows
+    );
+    dims[0] = nrows;
+
     if dims0 != dims {
         rankp += dims0[1] - dims[1];
     }
@@ -640,34 +839,16 @@ fn main() {
         rankp += dims1[0] - dims[0];
     }
 
-    // let mut nnzs = vec![0; 32];
-    // let mut ii = 0;
-    // let mut nz = 0;
-    // for &([i, _], _) in &lines {
-    //     if i != ii {
-    //         ii = i;
-    //         nnzs[nz] += 1;
-    //         nz = 0;
-    //     }
-    //     nz += 1;
-    // }
-
-    dims[0] = delete_duplicate_rows::<3>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<4>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<5>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<6>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<7>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<8>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<9>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<10>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<11>(&mut lines, dims);
-    dims[0] = delete_duplicate_rows::<12>(&mut lines, dims);
     count_statistics(&lines, dims);
     println!("Final dimensions: {} {}", dims[0], dims[1]);
     // dbg!(nnzs);
     {
         let mut file = File::create(parent.join(&new_stem).with_extension("rankp")).unwrap();
         write!(&mut file, "{rankp}").unwrap();
+    }
+    if dims == [0, 0] {
+        println!("Congratulations, the matrix was fully pruned!");
+        return;
     }
 
     if let Some(ref sep) = args.row_sep {
@@ -852,12 +1033,4 @@ fn gcd(a: i32, b: i32) -> i32 {
         }
         t = (t.1 % t.0, t.0);
     }
-}
-
-fn gcd_array<const N: usize>(a: &[i32; N]) -> i32 {
-    let mut g = a[0].abs();
-    for i in 1..N {
-        g = gcd(g, a[i]);
-    }
-    g
 }
