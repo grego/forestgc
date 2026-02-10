@@ -285,7 +285,7 @@ fn compute_matrix(
                     let Some(j) = graph_table.get_index(g, *m) else {
                         continue;
                     };
-                    writeln!(mf, "{} {} {}", j + durows as usize + 1, columns + 1, s).unwrap();
+                    writeln!(mf, "{} {} {}", j + durows + 1, columns + 1, s).unwrap();
                 }
                 columns += 1;
             }

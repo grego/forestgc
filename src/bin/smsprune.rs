@@ -13,6 +13,8 @@ use rayon::prelude::*;
 use graphc::graph::BigGraph;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+type Index = u32;
+
 /// Forested graph complex computations.
 #[derive(FromArgs)]
 #[argh(help_triggers("-h", "--help", "help"))]
@@ -28,7 +30,7 @@ struct Args {
     no_prune: bool,
     /// separate into two matrices after the provided number of rows
     #[argh(option)]
-    row_sep: Option<u32>,
+    row_sep: Option<Index>,
     /// join with another file before pruning
     #[argh(option, short = 'j')]
     join: Option<String>,
@@ -48,12 +50,12 @@ struct Args {
 /// and the column/row where the entry is.
 /// BY_COLUMNS specifies whether we prune rows or columns.
 fn prune_matrix<const BY_COLUMNS: usize>(
-    m: &mut Vec<([u32; 2], i32)>,
+    m: &mut Vec<([Index; 2], i32)>,
     dims: [usize; 2],
-    mut row_sep: Option<&mut u32>,
-) -> ([usize; 2], [Vec<u32>; 2]) {
+    mut row_sep: Option<&mut Index>,
+) -> ([usize; 2], [Vec<Index>; 2]) {
     let [h, w] = dims;
-    let mut indices = [vec![0_u32; h], vec![0_u32; w]];
+    let mut indices = [vec![0; h], vec![0; w]];
 
     for &(t, s) in m.iter() {
         if s == 0 {
@@ -83,9 +85,9 @@ fn prune_matrix<const BY_COLUMNS: usize>(
                 removed += 1;
             }
             shift += 1;
-            indices[0][i] = u32::MAX;
+            indices[0][i] = Index::MAX;
         } else {
-            indices[0][i] = i as u32 - shift;
+            indices[0][i] = i as Index - shift;
         }
     }
     let mut shift = 0;
@@ -95,9 +97,9 @@ fn prune_matrix<const BY_COLUMNS: usize>(
                 removed += 1;
             }
             shift += 1;
-            indices[1][i] = u32::MAX;
+            indices[1][i] = Index::MAX;
         } else {
-            indices[1][i] = i as u32 - shift;
+            indices[1][i] = i as Index - shift;
         }
     }
 
@@ -105,7 +107,8 @@ fn prune_matrix<const BY_COLUMNS: usize>(
     *m = mb
         .into_par_iter()
         .filter_map(|([i, j], s)| {
-            if indices[0][i as usize - 1] != u32::MAX && indices[1][j as usize - 1] != u32::MAX {
+            if indices[0][i as usize - 1] != Index::MAX && indices[1][j as usize - 1] != Index::MAX
+            {
                 Some((
                     [
                         indices[0][i as usize - 1] + 1,
@@ -132,13 +135,13 @@ fn prune_matrix<const BY_COLUMNS: usize>(
 /// multiple of the first column to the second.
 ///
 /// Returns the new dimensions.
-fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
+fn merge_2cols(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     let mut ii = 1;
     let mut nz = 0;
     let mut entries = Vec::new();
     let mut ops = Vec::new();
     let mut row_ranges = Vec::with_capacity(x);
-    let last = ([x as u32 + 1, y as u32 + 1], 1);
+    let last = ([x as Index + 1, y as Index + 1], 1);
     let mut last_k = 0;
     for (k, &([i, j], s)) in m.iter().chain(std::iter::once(&last)).enumerate() {
         if i != ii {
@@ -170,9 +173,9 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     );
     ops.dedup_by_key(|([_, j], _)| *j);
     ops.par_sort();
-    let mut opindices = vec![u32::MAX; y + 1];
+    let mut opindices = vec![Index::MAX; y + 1];
     for (k, &([_, j], _)) in ops.iter().enumerate() {
-        opindices[j as usize] = k as u32;
+        opindices[j as usize] = k as Index;
     }
 
     for k in (0..ops.len()).rev() {
@@ -197,7 +200,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
         }
 
         let i = opindices[j0 as usize];
-        if i < k as u32 {
+        if i < k as Index {
             ops[i as usize].1[1] *= s1;
         }
     }
@@ -211,11 +214,11 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     let mut ny = 0;
     let colindices: Vec<_> = (0..=y)
         .map(|i| {
-            if opindices[i] != u32::MAX {
+            if opindices[i] != Index::MAX {
                 shift += 1;
-                u32::MAX
+                Index::MAX
             } else {
-                ny = i as u32 - shift;
+                ny = i as Index - shift;
                 ny
             }
         })
@@ -278,7 +281,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
                 }
 
                 let i = opindices[j as usize];
-                if i != u32::MAX {
+                if i != Index::MAX {
                     rops.push(ops[i as usize]);
                     let ([j0, _], _) = ops[i as usize];
                     if indices.insert(j0) {
@@ -306,7 +309,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
             while i < entries.len() {
                 let e = &mut entries[i];
                 let c = colindices[e.0[1] as usize];
-                if c == u32::MAX {
+                if c == Index::MAX {
                     entries.swap_remove(i);
                 } else {
                     e.0[1] = c;
@@ -322,7 +325,7 @@ fn merge_2cols(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2] {
     [x, ny as usize]
 }
 
-fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
+fn divide_cols(m: &mut Vec<([Index; 2], i32)>, [_, y]: [usize; 2]) {
     let mut col_divisors = vec![0; y + 1];
     for &([_, j], s) in &*m {
         col_divisors[j as usize] = gcd(col_divisors[j as usize], s);
@@ -341,7 +344,7 @@ fn divide_cols(m: &mut Vec<([u32; 2], i32)>, [_, y]: [usize; 2]) {
     println! {"divided {divided} cols, max by {max}"};
 }
 
-fn count_statistics(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
+fn count_statistics(m: &[([Index; 2], i32)], [_, y]: [usize; 2]) {
     let mut counts = vec![0; y];
     for &([_, j], _) in m {
         counts[j as usize - 1] += 1;
@@ -367,7 +370,7 @@ fn count_statistics(m: &[([u32; 2], i32)], [_, y]: [usize; 2]) {
 }
 
 /// Delete duplicate rows of size.
-fn delete_duplicate_rows(m: &mut Vec<([u32; 2], i32)>, [x, _]: [usize; 2]) -> (usize, bool) {
+fn delete_duplicate_rows(m: &mut Vec<([Index; 2], i32)>, [x, _]: [usize; 2]) -> (usize, bool) {
     let mut rowset: FxHashMap<_, Vec<_>> = FxHashMap::default();
     let mut duplicities = 0;
 
@@ -380,7 +383,7 @@ fn delete_duplicate_rows(m: &mut Vec<([u32; 2], i32)>, [x, _]: [usize; 2]) -> (u
     // chain to also consider the last row
     for ([i, j], s) in mem::take(m)
         .into_iter()
-        .chain(iter::once(([x as u32 + 1, 0], 0)))
+        .chain(iter::once(([x as Index + 1, 0], 0)))
     {
         if i > ri {
             let mut g = values.iter().copied().fold(0, gcd);
@@ -477,7 +480,7 @@ fn delete_duplicate_rows(m: &mut Vec<([u32; 2], i32)>, [x, _]: [usize; 2]) -> (u
 
     (x - shift as usize, eliminated)
 }
-fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize {
+fn prune_ld_triplets(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> usize {
     let mut row_indices = vec![Default::default(); x + 1];
     let mut col_indices = vec![Vec::default(); y + 1];
 
@@ -503,45 +506,43 @@ fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize 
             let mut checked_rows = FxHashSet::default();
 
             for j in row_iter(i) {
-                for &ii in col_indices[j as usize].iter().filter(|&&ii| ii > i as u32) {
+                for &ii in col_indices[j as usize]
+                    .iter()
+                    .filter(|&&ii| ii > i as Index)
+                {
                     if !checked_rows.insert(ii) {
                         return false;
                     }
 
-                    let mut piv_i = u32::MAX;
+                    let mut piv_i = Index::MAX;
                     for k in row_iter(i) {
-                        if row_iter(ii as usize)
+                        if !row_iter(ii as usize)
                             .take_while(|&l| l <= k)
-                            .find(|&l| l == k)
-                            .is_none()
+                            .any(|l| l == k)
                         {
                             piv_i = k;
                             break;
                         }
                     }
-                    let mut piv_ii = u32::MAX;
+                    let mut piv_ii = Index::MAX;
                     for k in row_iter(ii as usize) {
-                        if row_iter(i)
-                            .take_while(|&l| l <= k)
-                            .find(|&l| l == k)
-                            .is_none()
-                        {
+                        if !row_iter(i).take_while(|&l| l <= k).any(|l| l == k) {
                             piv_ii = k;
                             break;
                         }
                     }
-                    let (i, ii, piv_i, mut piv_ii) = if piv_i != u32::MAX {
+                    let (i, ii, piv_i, mut piv_ii) = if piv_i != Index::MAX {
                         (i, ii as usize, piv_i, piv_ii)
                     } else {
                         (ii as usize, i, piv_ii, piv_i)
                     };
-                    if piv_i == u32::MAX {
+                    if piv_i == Index::MAX {
                         println!("a pair of rows doesn't have disjoint elements");
                         // dbg!(&m[row_indices[i]..row_indices[i + 1]]);
                         // dbg!(&m[row_indices[ii as usize]..row_indices[ii as usize + 1]]);
                         continue;
                     }
-                    if piv_ii == u32::MAX {
+                    if piv_ii == Index::MAX {
                         piv_ii = row_iter(ii).next().unwrap();
                     }
                     let cols = (&col_indices[piv_i as usize], &col_indices[piv_ii as usize]);
@@ -558,15 +559,15 @@ fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize 
                         i_vec[k] = s;
                     }
                     let mut ii_vec = vec![0; indices.len()];
-                    for &([_, j], s) in &m[row_indices[ii as usize]..row_indices[ii as usize + 1]] {
+                    for &([_, j], s) in &m[row_indices[ii]..row_indices[ii + 1]] {
                         let k = indices.binary_search(&j).unwrap();
                         ii_vec[k] = s;
                     }
 
                     let g = gcd(i_vec[piv_i], ii_vec[piv_ii]);
 
-                    let mut k = cols.0.binary_search(&(i as u32)).unwrap_or(0) + 1;
-                    let mut l = match cols.1.binary_search(&(i as u32)) {
+                    let mut k = cols.0.binary_search(&(i as Index)).unwrap_or(0) + 1;
+                    let mut l = match cols.1.binary_search(&(i as Index)) {
                         Ok(l) => l + 1,
                         Err(l) => l,
                     };
@@ -619,11 +620,11 @@ fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize 
         .collect();
 
     let mut shift = 0;
-    let rindices: Vec<u32> = (0..(x as u32 + 1))
+    let rindices: Vec<Index> = (0..(x as Index + 1))
         .map(|i| {
             if rowdelete[i as usize] {
                 shift += 1;
-                u32::MAX
+                Index::MAX
             } else {
                 i - shift
             }
@@ -646,15 +647,15 @@ fn prune_ld_triplets(m: &mut Vec<([u32; 2], i32)>, [x, y]: [usize; 2]) -> usize 
     rows as usize
 }
 
-fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)>) {
+fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([Index; 2], i32)>) {
     let mut lines = reader.lines();
     let first = lines.next().unwrap().unwrap();
     let mut lines = lines
         .map(|s| {
             let s = s.unwrap();
             let mut numbers = s.split_whitespace().map(|i| i.parse::<i64>().unwrap());
-            let i = numbers.next().unwrap() as u32;
-            let j = numbers.next().unwrap() as u32;
+            let i = numbers.next().unwrap() as Index;
+            let j = numbers.next().unwrap() as Index;
             ([i, j], numbers.next().unwrap() as i32)
         })
         .collect::<Vec<_>>();
@@ -669,7 +670,7 @@ fn read_sms_file<R: BufRead>(reader: &mut R) -> ([usize; 2], Vec<([u32; 2], i32)
     (dims, lines)
 }
 
-fn write_sms_file<W: Write>(dims: [usize; 2], mat: Vec<([u32; 2], i32)>, w: &mut W) {
+fn write_sms_file<W: Write>(dims: [usize; 2], mat: Vec<([Index; 2], i32)>, w: &mut W) {
     writeln!(w, "{} {} M", dims[0], dims[1]).unwrap();
     for ([i, j], s) in mat {
         writeln!(w, "{i} {j} {s}").unwrap();
@@ -716,7 +717,7 @@ fn main() {
         lines.extend(
             alines
                 .into_iter()
-                .map(|([i, j], s)| ([i + dims[0] as u32, j], s)),
+                .map(|([i, j], s)| ([i + dims[0] as Index, j], s)),
         );
         dims[0] += adims[0];
         println!("Read {}", &afile);
@@ -754,7 +755,7 @@ fn main() {
                 let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
                 for i in 0..=1 {
                     for j in 0..dims[i] {
-                        if indices[i][j] != u32::MAX {
+                        if indices[i][j] != Index::MAX {
                             reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
                                 r[i][j]
                             } else {
@@ -767,6 +768,7 @@ fn main() {
             }
             dims = ndims;
         }
+        dbg!(dims);
 
         let mut two_pruned = false;
         if args.twocol {
@@ -784,7 +786,7 @@ fn main() {
             loop {
                 let (nrows, eliminated) = delete_duplicate_rows(&mut lines, dims);
                 dims[0] = nrows;
-                if eliminated == false {
+                if !eliminated {
                     break;
                 }
                 reprune = true
@@ -822,7 +824,7 @@ fn main() {
             let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
             for i in 0..=1 {
                 for j in 0..dims[i] {
-                    if indices[i][j] != u32::MAX {
+                    if indices[i][j] != Index::MAX {
                         reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
                             r[i][j]
                         } else {

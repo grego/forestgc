@@ -534,8 +534,7 @@ impl Graph {
     /// Only works on graphs in the bipartite form
     pub fn contains_loop(&self) -> bool {
         (0..self.num_vertices)
-            .find(|&v| self.adj[v as usize].count_ones() == 1)
-            .is_some()
+            .any(|v| self.adj[v as usize].count_ones() == 1)
     }
 
     /// Return the number of loops in the given graph
