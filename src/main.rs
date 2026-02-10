@@ -246,8 +246,8 @@ fn compute_matrix(
             for (i, j, s) in du.matrix_entries(columns, durows) {
                 writeln!(mf, "{} {} {}", i + 1, j + 1, s).unwrap();
             }
-            columns += fg.subforests().len() as u32;
-            durows += du.smaller_forests().len() as u32;
+            columns += fg.subforests().len();
+            durows += du.smaller_forests().len();
         }
         println!("Pairs graph + subforest up to iso: {}", columns);
         println!("du differential rows: {}", durows);
@@ -307,7 +307,7 @@ fn compute_matrix(
     writeln!(mf, "0 0 0").unwrap();
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
-    write!(mf, "{} {}", durows + csum as u32, columns).unwrap();
+    write!(mf, "{} {}", durows + csum, columns).unwrap();
     println!("{} written", &filename);
 
     let total_time = start.elapsed();
@@ -362,7 +362,7 @@ fn compute_matrix_full(
 
     let mut columns = 0;
     for fg in fgs.iter() {
-        columns += fg.subforests().len() as u32;
+        columns += fg.subforests().len();
     }
     println!("Pairs graph + subforest up to iso: {}", columns);
 
@@ -440,9 +440,9 @@ fn compute_matrix_full(
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
     if transpose {
-        write!(mf, "{} {}", columns, csum as u32).unwrap();
+        write!(mf, "{} {}", columns, csum).unwrap();
     } else {
-        write!(mf, "{} {}", csum as u32, columns).unwrap();
+        write!(mf, "{} {}", csum, columns).unwrap();
     }
     println!("{} written", &filename);
 

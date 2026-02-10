@@ -434,13 +434,13 @@ impl UnmarkDifferential {
     /// of rows and columns.
     pub fn matrix_entries(
         &self,
-        col_shift: u32,
-        row_shift: u32,
-    ) -> impl Iterator<Item = (u32, u32, i8)> {
+        col_shift: usize,
+        row_shift: usize,
+    ) -> impl Iterator<Item = (usize, usize, i8)> {
         self.columns.iter().enumerate().flat_map(move |(i, c)| {
             c.iter().flat_map(move |(m, s)| {
                 let j = self.smaller_forests.binary_search(m).ok()?;
-                Some((j as u32 + row_shift, i as u32 + col_shift, *s))
+                Some((j + row_shift, i + col_shift, *s))
             })
         })
     }
