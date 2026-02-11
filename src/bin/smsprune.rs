@@ -37,6 +37,9 @@ struct Args {
     /// prune also rows with 2 nnz
     #[argh(switch, short = '2')]
     twocol: bool,
+    /// don't prune the columns
+    #[argh(switch, short = 'n')]
+    nocols: bool,
     /// prune the matrix registry file to keep only the elements corresponding
     /// to nonzeros of a vector
     #[argh(option)]
@@ -809,36 +812,38 @@ fn main() {
         rankp += dims0[1] - dims[1];
     }
 
-    let dims1 = dims;
-    loop {
-        let (ndims, indices) = prune_matrix::<1>(&mut lines, dims, args.row_sep.as_mut());
-        if dims == ndims {
-            break;
-        }
-        println!(
-            "c pruned {} rows, {} columns",
-            dims[0] - ndims[0],
-            dims[1] - ndims[1]
-        );
-        if args.registry {
-            let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
-            for i in 0..=1 {
-                for j in 0..dims[i] {
-                    if indices[i][j] != Index::MAX {
-                        reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
-                            r[i][j]
-                        } else {
-                            j
-                        };
+    if !args.nocols {
+        let dims1 = dims;
+        loop {
+            let (ndims, indices) = prune_matrix::<1>(&mut lines, dims, args.row_sep.as_mut());
+            if dims == ndims {
+                break;
+            }
+            println!(
+                "c pruned {} rows, {} columns",
+                dims[0] - ndims[0],
+                dims[1] - ndims[1]
+            );
+            if args.registry {
+                let mut reg = [vec![0; ndims[0]], vec![0; ndims[1]]];
+                for i in 0..=1 {
+                    for j in 0..dims[i] {
+                        if indices[i][j] != Index::MAX {
+                            reg[i][indices[i][j] as usize] = if let Some(ref r) = registry {
+                                r[i][j]
+                            } else {
+                                j
+                            };
+                        }
                     }
                 }
+                registry = Some(reg)
             }
-            registry = Some(reg)
+            dims = ndims;
         }
-        dims = ndims;
-    }
-    if dims1 != dims {
-        rankp += dims1[0] - dims[0];
+        if dims1 != dims {
+            rankp += dims1[0] - dims[0];
+        }
     }
 
     count_statistics(&lines, dims);
