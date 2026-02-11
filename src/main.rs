@@ -447,8 +447,8 @@ fn compute_matrix_full(
     println!("{} written", &filename);
 
     if registry {
-        let cols = if transpose { "cols" } else { "rows" };
-        let rows = if transpose { "rows" } else { "cols" };
+        let cols = if !transpose { "cols" } else { "rows" };
+        let rows = if !transpose { "rows" } else { "cols" };
         let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}{t}.{cols}");
         let mf = File::create(&filename).unwrap();
         let mut mf = BufWriter::new(mf);
@@ -459,7 +459,7 @@ fn compute_matrix_full(
         let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}{t}.{rows}");
         let mf = File::create(&filename).unwrap();
         let mut mf = BufWriter::new(mf);
-        writeln!(mf, "{}", graph_table).unwrap();
+        write!(mf, "{}", graph_table).unwrap();
     }
 
     let total_time = start.elapsed();
