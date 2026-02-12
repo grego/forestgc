@@ -38,7 +38,7 @@ struct Args {
     /// use the odd sign convention
     #[argh(switch, short = 'o')]
     odd: bool,
-    /// compute the complex with one hair
+    /// output the matrix transpose
     #[argh(switch, short = 'T')]
     transpose: bool,
     ///compute the complex with graphs with at least this girth after contracting the subforest
