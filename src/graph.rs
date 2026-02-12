@@ -1,6 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::{Display, Formatter};
+use std::hash::Hash;
 use std::mem;
 
 type HashType = u128;
@@ -9,7 +10,7 @@ type GraphScore = Vec<u64>;
 
 type Edge = (u8, u8);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct Graph {
     pub num_vertices: u8,
     pub edges: Vec<Edge>,
@@ -533,8 +534,7 @@ impl Graph {
     /// Returns whether the graph contains a loop, i.e. an edge from a vertex to itself
     /// Only works on graphs in the bipartite form
     pub fn contains_loop(&self) -> bool {
-        (0..self.num_vertices)
-            .any(|v| self.adj[v as usize].count_ones() == 1)
+        (0..self.num_vertices).any(|v| self.adj[v as usize].count_ones() == 1)
     }
 
     /// Return the number of loops in the given graph
@@ -1184,5 +1184,17 @@ impl Iterator for BitPositions {
 impl Display for Graph {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_g6())
+    }
+}
+
+impl PartialEq for Graph {
+    fn eq(&self, other: &Self) -> bool {
+        self.adj == other.adj
+    }
+}
+
+impl Hash for Graph {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.adj.hash(state)
     }
 }
