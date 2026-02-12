@@ -302,7 +302,7 @@ fn merge_2cols(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> [usize; 2]
                 let v1 = k1.map(|k| entries[k].1).unwrap_or(0);
                 let k0 = entries.iter().position(|([_, j], _)| *j == j0);
                 let v0 = k0.map(|k| entries.swap_remove(k).1).unwrap_or(0);
-                let new = s1 * v0 - s0 * v1;
+                let new = s1.strict_mul(v0).strict_sub(s0.strict_mul(v1));
                 if new != 0 {
                     entries.push(([i, j0], new))
                 }
