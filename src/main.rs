@@ -56,6 +56,9 @@ struct Args {
     /// the file to load the graphs from
     #[argh(option)]
     graphfile: Option<String>,
+    /// the graph excess to compute the differential in
+    #[argh(option, short = 'e', default = "0")]
+    excess: u8,
     /// the rank of the forested graph complex
     #[argh(positional)]
     rank: u8,
@@ -574,14 +577,19 @@ fn main() {
     } else {
         "".into()
     };
+    let exc = if args.excess >= 1 {
+        format!("_e{}", args.excess)
+    } else {
+        "".into()
+    };
     let matrix_name = if let Some(ref graphfile) = args.graphfile {
         let gf = Path::new(graphfile)
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}{gf}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}{gf}{exc}")
     } else {
-        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}r{rank}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}r{rank}{exc}")
     };
 
     if args.all_excesses {
@@ -595,14 +603,18 @@ fn main() {
         return;
     }
 
-    let mut min_vertices = if args.full { 2 } else { 2 * rank - 2 };
-    let mut max_vertices = 2 * rank - 2;
+    let mut min_vertices = if args.full {
+        2
+    } else {
+        2 * rank - 2 - args.excess
+    };
+    let mut max_vertices = 2 * rank - 2 - args.excess;
     let mut min_degree = 4 * rank / 5;
     if args.hairs > 0 {
         min_degree = (rank - 3) / 2;
         rank += args.hairs;
-        min_vertices = 2 * rank - 2 - args.hairs;
-        max_vertices = 2 * rank - 2 - args.hairs;
+        min_vertices = 2 * rank - 2 - args.hairs - args.excess;
+        max_vertices = 2 * rank - 2 - args.hairs - args.excess;
     }
     let mut graphs = if let Some(ref graphfile) = args.graphfile {
         read_graphfile(graphfile, !args.all && args.hairs == 0, args.hairs)
@@ -647,7 +659,7 @@ fn main() {
                 &graphs,
                 (d, args.hairs),
                 (&args.matrix_dir, &matrix_name),
-                args.all,
+                args.all || args.excess != 0,
                 &args,
             );
         }
