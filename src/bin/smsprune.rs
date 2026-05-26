@@ -40,6 +40,9 @@ struct Args {
     /// don't prune the columns
     #[argh(switch, short = 'n')]
     nocols: bool,
+    /// don't do any row elimination
+    #[argh(switch)]
+    noelim: bool,
     /// prune the matrix registry file to keep only the elements corresponding
     /// to nonzeros of a vector
     #[argh(option)]
@@ -373,7 +376,13 @@ fn count_statistics(m: &[([Index; 2], i32)], [_, y]: [usize; 2]) {
 }
 
 /// Delete duplicate rows of size.
-fn delete_duplicate_rows(m: &mut Vec<([Index; 2], i32)>, [x, _]: [usize; 2]) -> (usize, bool) {
+/// `eliminate` determines whether we add rows with the same nonzero positions
+/// to eliminate entries.
+fn delete_duplicate_rows(
+    m: &mut Vec<([Index; 2], i32)>,
+    [x, _]: [usize; 2],
+    eliminate: bool,
+) -> (usize, bool) {
     let mut rowset: FxHashMap<_, Vec<_>> = FxHashMap::default();
     let mut duplicities = 0;
 
@@ -411,43 +420,48 @@ fn delete_duplicate_rows(m: &mut Vec<([Index; 2], i32)>, [x, _]: [usize; 2]) -> 
             if rowdelete {
                 shift += 1;
             } else {
-                // find the maximum non-zeros we can get by adding a previous row
-                // to this one
-                let (mut max, mut ma, mut mb, mut mchui) = (0, 0, 0, 0);
-                let len = values.len();
-                for (i, chunk) in entries.chunks(len).enumerate() {
-                    for (&x, &y) in values.iter().zip(chunk.iter()) {
-                        let g = gcd(x, y);
-                        let (a, b) = (y / g, -x / g);
-                        let mut zeros = 0;
+                if eliminate {
+                    // find the maximum non-zeros we can get by adding a previous row
+                    // to this one
+                    let (mut max, mut ma, mut mb, mut mchui) = (0, 0, 0, 0);
+                    let len = values.len();
+                    for (i, chunk) in entries.chunks(len).enumerate() {
                         for (&x, &y) in values.iter().zip(chunk.iter()) {
-                            if a * x + b * y == 0 {
-                                zeros += 1;
+                            let g = gcd(x, y);
+                            let (a, b) = (y / g, -x / g);
+                            let mut zeros = 0;
+                            for (&x, &y) in values.iter().zip(chunk.iter()) {
+                                if a * x + b * y == 0 {
+                                    zeros += 1;
+                                }
+                            }
+                            if zeros > max {
+                                max = zeros;
+                                ma = a;
+                                mb = b;
+                                mchui = i;
                             }
                         }
-                        if zeros > max {
-                            max = zeros;
-                            ma = a;
-                            mb = b;
-                            mchui = i;
-                        }
                     }
-                }
-                entries.extend_from_slice(&values);
-                if max > 0 {
-                    eliminated = true;
+                    entries.extend_from_slice(&values);
 
-                    // println!("len {}, max {max}, {ma}*x + {mb}*y", values.len());
-                    for (v, &x) in values.iter_mut().zip(&entries[mchui * len..]) {
-                        *v = ma * *v + mb * x;
-                    }
-                    let g = values.iter().copied().fold(0, gcd);
-                    if g != 1 {
-                        for v in values.iter_mut() {
-                            *v /= g;
+                    if max > 0 {
+                        eliminated = true;
+
+                        // println!("len {}, max {max}, {ma}*x + {mb}*y", values.len());
+                        for (v, &x) in values.iter_mut().zip(&entries[mchui * len..]) {
+                            *v = ma * *v + mb * x;
                         }
+                        let g = values.iter().copied().fold(0, gcd);
+                        if g != 1 {
+                            for v in values.iter_mut() {
+                                *v /= g;
+                            }
+                        }
+                        // dbg!(&values);
                     }
-                    // dbg!(&values);
+                } else {
+                    entries.extend_from_slice(&values);
                 }
 
                 for (j, s) in col_indices.drain(..).zip(values.drain(..)) {
@@ -787,7 +801,7 @@ fn main() {
         let mut reprune = false;
         if !two_pruned {
             loop {
-                let (nrows, eliminated) = delete_duplicate_rows(&mut lines, dims);
+                let (nrows, eliminated) = delete_duplicate_rows(&mut lines, dims, !args.noelim);
                 dims[0] = nrows;
                 if !eliminated {
                     break;
