@@ -156,7 +156,7 @@ impl ForestedGraph {
             if odd {
                 mask = everything & !mask;
             }
-            if let Some((mut csf, _)) = canonical_subforest_even(mask, &perms, &signs) {
+            if let Some((mut csf, _)) = canonical_subforest(mask, &perms, &signs) {
                 if odd {
                     csf = everything & !csf;
                 }
@@ -267,7 +267,7 @@ impl ForestedGraph {
     }
 
     /// Compute the contracting differential.
-    pub fn d_contract(&self) -> ContractDifferential {
+    pub fn d_contract(&self, allow_3_connected: bool) -> ContractDifferential {
         let mut contracted_graphs: Vec<(String, Vec<Vec<u8>>)> = Vec::new();
         let mut contracted_indices = vec![(0, Vec::new()); self.graph.num_vertices as usize];
         let mut signs = Vec::new();
@@ -278,6 +278,9 @@ impl ForestedGraph {
         let mut odddeleted = vec![0; self.graph.num_vertices as usize];
         for i in BitPositions(self.edges) {
             let (g, m) = self.graph.contract_neighborhood(i as u8);
+            if !allow_3_connected && g.is_3edge_connected() {
+                continue;
+            }
             let (g, base, mut perms) = g.canonical_label();
             let mut to_canon = compose(&m, &base);
             let mut g6 = g.to_g6();
@@ -547,30 +550,6 @@ impl GraphTable {
 /// class and `sign` its sign.
 #[inline]
 pub fn canonical_subforest(mask: u64, perms: &[Vec<u8>], signs: &[i8]) -> Option<(u64, i8)> {
-    let mut cm = mask;
-    let mut sign = 1;
-    let mut _autos = 1;
-    for (i, perm) in perms.iter().enumerate() {
-        let m = permute_mask(mask, perm);
-        if m == mask {
-            if signs[i] * sign_subset(perm, BitPositions(mask)) == -1 {
-                return None;
-            }
-            _autos += 1;
-        } else if m < cm {
-            cm = m;
-            sign = signs[i] * sign_subset(perm, BitPositions(mask));
-        }
-    }
-    Some((cm, sign))
-}
-
-/// Compute the canonical form of a subforest, given a list of graph automorphisms.
-/// If it has an odd automorphism, return None.
-/// Otherwise, return a touple `(forest, sign)` where `forest` is its representing
-/// class and `sign` its sign.
-#[inline]
-pub fn canonical_subforest_even(mask: u64, perms: &[Vec<u8>], signs: &[i8]) -> Option<(u64, i8)> {
     let mut cm = mask;
     let mut sign = 1;
     let mut _autos = 1;

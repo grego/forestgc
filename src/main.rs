@@ -17,6 +17,9 @@ struct Args {
     /// use all graphs instead of just 3-edge connected
     #[argh(switch, short = 'a')]
     all: bool,
+    /// compute the complement of the 3-edge connected complex
+    #[argh(switch)]
+    non_3conn: bool,
     /// compute the matrices of the full graph complex instead of just trivalent graphs
     #[argh(switch, short = 'f')]
     full: bool,
@@ -67,7 +70,7 @@ struct Args {
     degree: Option<u8>,
 }
 
-fn read_graphfile(filename: &str, three_connected: bool, hairs: u8) -> Vec<Graph> {
+fn read_graphfile(filename: &str, three_connected: bool, hairs: u8, compl: bool) -> Vec<Graph> {
     let file = match File::open(filename) {
         Ok(file) => file,
         Err(e) => panic!("Unable to open {filename}: {e}"),
@@ -77,28 +80,36 @@ fn read_graphfile(filename: &str, three_connected: bool, hairs: u8) -> Vec<Graph
     g6s.par_iter()
         .map(|g6| Graph::from_g6(g6))
         .filter(|g| !three_connected || g.is_3edge_connected())
+        .filter(|g| !compl || !g.is_3edge_connected())
         .filter(|g| hairs == 0 || g.number_of_loops() >= hairs)
         .collect()
 }
 
 /// Read the grapsh of the specified rank with the specified number of vertices.
-fn read_graphs(rank: u8, minv: u8, maxv: u8, three_connected: bool, hairs: u8) -> Vec<Graph> {
+fn read_graphs(
+    rank: u8,
+    minv: u8,
+    maxv: u8,
+    three_connected: bool,
+    hairs: u8,
+    compl: bool,
+) -> Vec<Graph> {
     let mut graphs = Vec::new();
     for i in minv..=maxv {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
-        let mut gs = read_graphfile(&filename, three_connected, hairs);
+        let mut gs = read_graphfile(&filename, three_connected, hairs, compl);
         graphs.append(&mut gs);
     }
     graphs
 }
 
 /// Read all graphs of the specified rank into the list by the excess of the graph.
-fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8) -> Vec<Vec<Graph>> {
+fn read_all_graphs(rank: u8, three_connected: bool, hairs: u8, compl: bool) -> Vec<Vec<Graph>> {
     let mut graphs = Vec::new();
     let rank = rank + hairs;
     for i in 2..=(2 * rank - 2 - hairs) {
         let filename = format!("graphs/v{}_e{}.g6", i, i + rank - 1);
-        let gs = read_graphfile(&filename, three_connected, hairs);
+        let gs = read_graphfile(&filename, three_connected, hairs, compl);
         graphs.push(gs);
     }
     graphs
@@ -270,7 +281,10 @@ fn compute_matrix(
 
     let mut csum = 0;
     if dc {
-        let dcs: Vec<_> = fgs.into_par_iter().map(|fg| fg.d_contract()).collect();
+        let dcs: Vec<_> = fgs
+            .into_par_iter()
+            .map(|fg| fg.d_contract(!args.non_3conn))
+            .collect();
         let graph_table = GraphTable::new(
             dcs.iter()
                 .flat_map(|dc| dc.contracted_graphs())
@@ -358,7 +372,7 @@ fn compute_matrix_full(
             let fc = ForestedGraph::new(g, forest_size as usize, true, odd);
             let g = fc.filter(|f| fc.girth(f) > 0);
             let du = g.d_unmark();
-            let dc = g.d_contract();
+            let dc = g.d_contract(!args.non_3conn);
             (g, (du, dc))
         })
         .collect();
@@ -482,9 +496,10 @@ fn print_dimensions(
     girthmax: u8,
     odd: bool,
     hairs: u8,
+    compl: bool,
 ) {
     let dims = compute_dimensions(
-        &read_all_graphs(rank, three_connected, hairs),
+        &read_all_graphs(rank, three_connected, hairs, compl),
         girthmin,
         girthmax,
         odd,
@@ -541,6 +556,7 @@ fn main() {
             args.girthmax,
             args.odd,
             args.hairs,
+            args.non_3conn,
         );
         return;
     }
@@ -556,6 +572,8 @@ fn main() {
     };
     let stem = if args.full {
         "f"
+    } else if args.non_3conn {
+        "c"
     } else if args.all {
         "a"
     } else {
@@ -593,7 +611,7 @@ fn main() {
     };
 
     if args.all_excesses {
-        let graphs = read_all_graphs(rank, !args.all, args.hairs);
+        let graphs = read_all_graphs(rank, !args.all, args.hairs, args.non_3conn);
         for (e, gs) in graphs.iter().rev().enumerate() {
             let mn = format!("{matrix_name}_e{e}");
             for d in 1..(2 * rank - 2 - e as u8) {
@@ -617,14 +635,20 @@ fn main() {
         max_vertices = 2 * rank - 2 - args.hairs - args.excess;
     }
     let mut graphs = if let Some(ref graphfile) = args.graphfile {
-        read_graphfile(graphfile, !args.all && args.hairs == 0, args.hairs)
+        read_graphfile(
+            graphfile,
+            !args.all && !args.non_3conn && args.hairs == 0,
+            args.hairs,
+            args.non_3conn,
+        )
     } else {
         read_graphs(
             rank,
             min_vertices,
             max_vertices,
-            !args.all && args.hairs == 0,
+            !args.all && !args.non_3conn && args.hairs == 0,
             args.hairs,
+            args.non_3conn,
         )
     };
     if args.hairs > 0 {
