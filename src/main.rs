@@ -122,7 +122,7 @@ fn compute_dimensions(
     odd: bool,
     hairs: u8,
 ) -> Vec<Vec<usize>> {
-    let mut res = vec![vec![1]];
+    let mut res = vec![vec![if odd { 0 } else { 1 }]];
     for (i, gs) in graphs.iter().enumerate() {
         let dims = gs
             .par_iter()
