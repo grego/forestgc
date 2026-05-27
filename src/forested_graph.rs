@@ -333,6 +333,9 @@ impl ForestedGraph {
                 // must be a marked edge on a double edge with the odd sign convention
                 // whose contraction produces a loop, i.e. 0 in this convention
                 if to_canon.is_empty() {
+                    if !self.odd && !allow_3_connected {
+                        sign *= -1;
+                    }
                     continue;
                 }
                 let (_, perms) = &contracted_graphs[j];
