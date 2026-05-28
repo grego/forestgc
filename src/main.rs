@@ -683,7 +683,7 @@ fn main() {
                 &graphs,
                 (d, args.hairs),
                 (&args.matrix_dir, &matrix_name),
-                args.all || args.excess != 0,
+                args.all || args.odd || args.excess != 0,
                 &args,
             );
         }
