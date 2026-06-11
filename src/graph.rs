@@ -996,7 +996,6 @@ impl Graph {
     }
 
     /// Returns whether a graph is 3-vertex connected
-    /// Expected to be called on simple 3 valent graph only and in the bipartite form!
     pub fn is_3vertex_connected(&self) -> bool {
         let vertices = self.vertices_valency(3, 255);
 
@@ -1009,6 +1008,19 @@ impl Graph {
                 if g.connected_components().0 > 1 {
                     return false;
                 }
+            }
+        }
+        true
+    }
+
+    /// Returns whether a graph is 2-vertex connected
+    pub fn is_2vertex_connected(&self) -> bool {
+        let vertices = self.vertices_valency(3, 255);
+
+        for v in vertices {
+            let g = self.remove_vertex(v);
+            if g.connected_components().0 > 1 {
+                return false;
             }
         }
         true

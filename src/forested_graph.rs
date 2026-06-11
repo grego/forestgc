@@ -3,6 +3,7 @@ use crate::graph::{compose, inverse, permute_mask, sign_subset};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt::{Display, Formatter, Write};
+use std::str::FromStr;
 
 /// Graph with all subforests. It is a multigraph without tadpoles, with edges of
 /// valency at least 3.
@@ -633,6 +634,56 @@ fn canonical_hairs(perms: &[Vec<u8>], hairs: &mut Vec<u8>) -> (Option<Vec<u8>>, 
         }
     }
     (canperm, p)
+}
+
+#[derive(Debug)]
+pub struct FGParseError;
+
+impl FromStr for ForestedGraph {
+    type Err = FGParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut numbers = s.split_whitespace();
+        let Some(graph) = numbers.next() else {
+            return Err(FGParseError);
+        };
+
+        let mut ghairs = graph.split('-');
+        let Some(g) = ghairs.next() else {
+            return Err(FGParseError);
+        };
+        let graph = Graph::from_g6(g);
+        let mut hairs = Vec::new();
+        for m in ghairs.map(|s| u8::from_str_radix(s, 16)) {
+            let Ok(m) = m else {
+                return Err(FGParseError);
+            };
+            hairs.push(m);
+        }
+
+        let perms = graph.automorphisms();
+        let mut subforests = Vec::new();
+        for m in numbers.map(|s| u64::from_str_radix(s, 16)) {
+            let Ok(m) = m else {
+                return Err(FGParseError);
+            };
+            subforests.push(m);
+        }
+
+        let mut edges = 0;
+        for v in (0..graph.num_vertices).filter(|v| graph.adj[*v as usize].count_ones() == 2) {
+            edges |= 1 << v;
+        }
+
+        Ok(Self {
+            graph,
+            perms,
+            edges,
+            subforests,
+            odd: false,
+            hairs,
+        })
+    }
 }
 
 impl Display for ForestedGraph {

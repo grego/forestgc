@@ -59,6 +59,9 @@ struct Args {
     /// the file to load the graphs from
     #[argh(option)]
     graphfile: Option<String>,
+    /// the optional additional list of forested graphs to extend the columns of the matrix with
+    #[argh(option)]
+    extend: Option<String>,
     /// the graph excess to compute the differential in
     #[argh(option, short = 'e', default = "0")]
     excess: u8,
@@ -79,7 +82,7 @@ fn read_graphfile(filename: &str, three_connected: bool, hairs: u8, compl: bool)
     let g6s = reader.lines().collect::<Result<Vec<_>, _>>().unwrap();
     g6s.par_iter()
         .map(|g6| Graph::from_g6(g6))
-        .filter(|g| !three_connected || g.is_3edge_connected())
+        .filter(|g| !three_connected || !g.is_2vertex_connected() || g.is_3edge_connected())
         .filter(|g| !compl || !g.is_3edge_connected())
         .filter(|g| hairs == 0 || g.number_of_loops() >= hairs)
         .collect()
@@ -198,7 +201,7 @@ fn compute_matrix(
 
     let start = Instant::now();
 
-    let fgs: Vec<_> = graphs
+    let mut fgs: Vec<_> = graphs
         .par_iter()
         .flat_map(|g| {
             ForestedGraph::hairy(
@@ -225,6 +228,12 @@ fn compute_matrix(
             }
         })
         .collect();
+
+    if let Some(ref extendfile) = args.extend {
+        let f = File::open(extendfile).expect(&format!("Can't open {extendfile}"));
+        let reader = BufReader::new(f);
+        fgs.extend(reader.lines().map(|l| l.unwrap().parse().unwrap()));
+    }
 
     if registry {
         let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.cols");
@@ -600,14 +609,27 @@ fn main() {
     } else {
         "".into()
     };
+    let ext = args
+        .extend
+        .as_ref()
+        .map(|f| {
+            format!(
+                "_with_{}",
+                Path::new(f)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            )
+        })
+        .unwrap_or_default();
     let matrix_name = if let Some(ref graphfile) = args.graphfile {
         let gf = Path::new(graphfile)
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy();
-        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}{gf}{exc}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}{gf}{exc}{ext}")
     } else {
-        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}r{rank}{exc}")
+        format!("{prefix}{stem}{sign_convention}{hairs}{girthmin}{girthmax}r{rank}{exc}{ext}")
     };
 
     if args.all_excesses {
