@@ -24,7 +24,7 @@ fn parse_vector(contents: &str) -> Vec<i64> {
         .trim()
         .trim_start_matches('[')
         .trim_end_matches(']')
-        .split(',')
+        .split(' ')
         .map(|x| x.trim().parse::<i64>().expect("Invalid integer"))
         .collect()
 }

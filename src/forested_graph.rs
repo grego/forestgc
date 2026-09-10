@@ -411,7 +411,7 @@ impl ForestedGraph {
     pub fn loops(&self, forest: u64) -> u8 {
         let ddd: Vec<u8> = BitPositions(forest).map(|a| a as u8).collect();
         let fff = self.graph().contract_multiple_neighborhoods(&ddd);
-        fff.vertices_valency(1, 1).len() as u8
+        fff.vertices_with_valency(1, 1).len() as u8
     }
 
     /// Return the G6 string of the underlying graph, possibly with hexadecimal values for hairs

@@ -1,5 +1,8 @@
+// use std::array;
+
 // use graphc::forested_graph::ForestedGraph;
 use graphc::graph::*;
+// use rustc_hash::FxHashSet;
 // use rayon::prelude::*;
 // use std::fs::File;
 // use std::io::{BufRead, BufReader};
@@ -79,7 +82,7 @@ static TRIANGLES_EDGES: &[(u8, u8)] = &[
 
 // subforests function
 #[test]
-fn test_subforest_petersen() {
+fn subforest_petersen() {
     let graph: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
 
     let subforests_number_size1: usize = graph.subforests(1, 1).len();
@@ -92,7 +95,7 @@ fn test_subforest_petersen() {
 }
 
 #[test]
-fn test_subforest_morita_rank4() {
+fn subforest_morita_rank4() {
     let graph: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into());
 
     let subforests_number_size1: usize = graph.subforests(1, 1).len();
@@ -105,7 +108,7 @@ fn test_subforest_morita_rank4() {
 }
 
 #[test]
-fn test_subforest_benzen_rank4() {
+fn subforest_benzen_rank4() {
     let graph: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into());
 
     let subforests_number_size1: usize = graph.subforests(1, 1).len();
@@ -120,7 +123,7 @@ fn test_subforest_benzen_rank4() {
 // contract_edge
 
 #[test]
-fn test_contract_edge_petersen() {
+fn contract_edge_petersen() {
     let edges = vec![
         (0, 1),
         (1, 2),
@@ -155,7 +158,7 @@ fn test_contract_edge_petersen() {
 }
 
 #[test]
-fn test_contract_edge_morita_rank4() {
+fn contract_edge_morita_rank4() {
     let edges = vec![
         (0, 1),
         (0, 3),
@@ -184,7 +187,7 @@ fn test_contract_edge_morita_rank4() {
 }
 
 #[test]
-fn test_contract_edge_benzen_rank4() {
+fn contract_edge_benzen_rank4() {
     let edges: Vec<(u8, u8)> = vec![
         (0, 1),
         (0, 1),
@@ -214,7 +217,7 @@ fn test_contract_edge_benzen_rank4() {
 // contract_neighborhood function
 
 #[test]
-fn test_contract_neighborhood_petersen() {
+fn contract_neighborhood_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
     let contrpetersen: Graph = petersen.contract_edge((5, 9));
     let contrpetersenbipart: Graph = contrpetersen.to_bipartite();
@@ -232,7 +235,7 @@ fn test_contract_neighborhood_petersen() {
 }
 
 #[test]
-fn test_contract_neighborhood_morita_rank4() {
+fn contract_neighborhood_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into());
     let contrmorita: Graph = morita.contract_edge((2, 3));
     let contrmoritabipart: Graph = contrmorita.to_bipartite();
@@ -242,7 +245,7 @@ fn test_contract_neighborhood_morita_rank4() {
 }
 
 #[test]
-fn test_contract_neighborhood_benzen_rank4() {
+fn contract_neighborhood_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into());
     let contrbenzen: Graph = benzen.contract_edge((2, 3));
     let contrbenzenbipart: Graph = contrbenzen.to_bipartite();
@@ -263,7 +266,7 @@ fn test_contract_neighborhood_benzen_rank4() {
 // contract_multiple_neighborhoods function
 
 #[test]
-fn test_contract_multiple_neighborhoods_petersen() {
+fn contract_multiple_neighborhoods_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
     let contrpetersen: Graph = petersen
         .contract_edge((6, 9))
@@ -278,7 +281,7 @@ fn test_contract_multiple_neighborhoods_petersen() {
 }
 
 #[test]
-fn test_contract_multiple_neighborhoods_morita_rank4() {
+fn contract_multiple_neighborhoods_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into());
     let contrmorita: Graph = morita
         .contract_edge((2, 5))
@@ -293,7 +296,7 @@ fn test_contract_multiple_neighborhoods_morita_rank4() {
 }
 
 #[test]
-fn test_contract_multiple_neighborhoods_benzen_rank4() {
+fn contract_multiple_neighborhoods_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into());
     let contrbenzen: Graph = benzen
         .contract_edge((1, 5))
@@ -310,19 +313,19 @@ fn test_contract_multiple_neighborhoods_benzen_rank4() {
 // count_double_edges function
 
 #[test]
-fn test_count_double_edges_petersen() {
+fn count_double_edges_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.count_double_edges(), 0);
 }
 
 #[test]
-fn test_count_double_edges_morita_rank4() {
+fn count_double_edges_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(morita.count_double_edges(), 0);
 }
 
 #[test]
-fn test_count_double_edges_benzen_rank4() {
+fn count_double_edges_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.count_double_edges(), 3);
 }
@@ -330,48 +333,48 @@ fn test_count_double_edges_benzen_rank4() {
 // vertices_valency2 function
 
 #[test]
-fn test_vertices_valency2_petersen() {
+fn vertices_valency2_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
-    assert_eq!(petersen.vertices_valency2().len(), 15);
+    assert_eq!(petersen.vertices_with_valency(2, 2).len(), 15);
 }
 
 #[test]
-fn test_vertices_valency2_morita_rank4() {
+fn vertices_valency2_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
-    assert_eq!(morita.vertices_valency2().len(), 9);
+    assert_eq!(morita.vertices_with_valency(2, 2).len(), 9);
 }
 
 #[test]
-fn test_vertices_valency2_benzen_rank4() {
+fn vertices_valency2_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
-    assert_eq!(benzen.vertices_valency2().len(), 9);
+    assert_eq!(benzen.vertices_with_valency(2, 2).len(), 9);
 }
 
 // vertices_valency3 function
 
 #[test]
-fn test_vertices_valency3_petersen() {
+fn vertices_valency3_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(
-        petersen.vertices_valency3().len(),
+        petersen.vertices_with_valency(3, 3).len(),
         PETERSEN_VERTICES as usize
     );
 }
 
 #[test]
-fn test_vertices_valency3_morita_rank4() {
+fn vertices_valency3_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(
-        morita.vertices_valency3().len(),
+        morita.vertices_with_valency(3, 3).len(),
         MORITA_RANK4_VERTICES as usize
     );
 }
 
 #[test]
-fn test_vertices_valency3_benzen_rank4() {
+fn vertices_valency3_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(
-        benzen.vertices_valency3().len(),
+        benzen.vertices_with_valency(3, 3).len(),
         BENZEN_RANK4_VERTICES as usize
     );
 }
@@ -379,32 +382,32 @@ fn test_vertices_valency3_benzen_rank4() {
 // connected_components function
 
 #[test]
-fn test_connected_components_petersen() {
+fn connected_components_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.connected_components().0, 1);
 }
 
 #[test]
-fn test_connected_components_morita_rank4() {
+fn connected_components_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(morita.connected_components().0, 1);
 }
 
 #[test]
-fn test_connected_components_benzen_rank4() {
+fn connected_components_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.connected_components().0, 1);
 }
 
 #[test]
-fn test_connected_components_4components() {
+fn connected_components_4components() {
     let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
     let g = Graph::new(8, edges);
     assert_eq!(g.connected_components().0, 4);
 }
 
 #[test]
-fn test_connected_components_4components_biggraph() {
+fn connected_components_4components_biggraph() {
     let edges = vec![(1, 4), (0, 4), (4, 1), (2, 3), (6, 7)];
     let g = BigGraph::new(8, edges);
     assert_eq!(g.connected_components().0, 4);
@@ -413,21 +416,27 @@ fn test_connected_components_4components_biggraph() {
 // is_3edge_connected function
 
 #[test]
-fn test_is_3edge_connected_petersen() {
+fn is_3edge_connected_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert!(petersen.is_3edge_connected());
     assert!(petersen.is_k_edge_connected(3, true));
 }
 
 #[test]
-fn test_is_3edge_connected_morita_rank4() {
+fn is_3vertex_connected_petersen() {
+    let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
+    assert!(petersen.simplify(true).0.is_3vertex_connected());
+}
+
+#[test]
+fn is_3edge_connected_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert!(morita.is_3edge_connected());
     assert!(morita.is_k_edge_connected(3, true));
 }
 
 #[test]
-fn test_is_3edge_connected_benzen_rank4() {
+fn is_3edge_connected_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert!(!benzen.is_3edge_connected());
     assert!(!benzen.is_k_edge_connected(3, true));
@@ -436,19 +445,19 @@ fn test_is_3edge_connected_benzen_rank4() {
 // girth function
 
 #[test]
-fn test_girth_petersen() {
+fn girth_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.girth(), 5);
 }
 
 #[test]
-fn test_girth_morita_rank4() {
+fn girth_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(morita.girth(), 3);
 }
 
 #[test]
-fn test_girth_benzen_rank4() {
+fn girth_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.girth(), 2);
 }
@@ -456,7 +465,7 @@ fn test_girth_benzen_rank4() {
 //  neighbour_vertices function
 
 #[test]
-fn test_neighbour_vertices_petersen() {
+fn neighbour_vertices_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.neighbour_vertices(0), vec![1, 4, 5]);
     assert_eq!(petersen.neighbour_vertices(1), vec![0, 2, 6]);
@@ -467,7 +476,7 @@ fn test_neighbour_vertices_petersen() {
 }
 
 #[test]
-fn test_neighbour_vertices_morita_rank4() {
+fn neighbour_vertices_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(morita.neighbour_vertices(0), vec![1, 3, 5]);
     assert_eq!(morita.neighbour_vertices(1), vec![0, 4, 5]);
@@ -478,7 +487,7 @@ fn test_neighbour_vertices_morita_rank4() {
 }
 
 #[test]
-fn test_neighbour_vertices_benzen_rank4() {
+fn neighbour_vertices_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.neighbour_vertices(0), vec![1, 4]);
     assert_eq!(benzen.neighbour_vertices(1), vec![0, 5]);
@@ -491,13 +500,13 @@ fn test_neighbour_vertices_benzen_rank4() {
 // triangles function
 
 #[test]
-fn test_triangles_petersen() {
+fn triangles_petersen() {
     let petersen: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into()).to_bipartite();
     assert_eq!(petersen.triangles(), vec![]);
 }
 
 #[test]
-fn test_triangles_morita_rank4() {
+fn triangles_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(
         morita.triangles(),
@@ -509,13 +518,13 @@ fn test_triangles_morita_rank4() {
 }
 
 #[test]
-fn test_triangles_benzen_rank4() {
+fn triangles_benzen_rank4() {
     let benzen: Graph = Graph::new(BENZEN_RANK4_VERTICES, BENZEN_RANK4_EDGES.into()).to_bipartite();
     assert_eq!(benzen.triangles(), vec![]);
 }
 
 #[test]
-fn test_triangles_triangles() {
+fn triangles_triangles() {
     let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
     assert_eq!(
         triangles.triangles(),
@@ -531,7 +540,7 @@ fn test_triangles_triangles() {
 // has_edge_on_triangle function
 
 #[test]
-fn test_has_edge_on_triangle_morita_rank4() {
+fn has_edge_on_triangle_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert!(!morita.has_edge_on_triangle((1 << 9) | (1 << 13) | (1 << 7))); // no edges on triangles
     assert!(morita.has_edge_on_triangle((1 << 9) | (1 << 12) | (1 << 13))); // no edge on first trinagle, one on second
@@ -545,7 +554,7 @@ fn test_has_edge_on_triangle_morita_rank4() {
 }
 
 #[test]
-fn test_has_edge_on_triangle_triangles() {
+fn has_edge_on_triangle_triangles() {
     let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
     assert!(!triangles.has_edge_on_triangle((1 << 10) | (1 << 14))); // no edges on triangles
     assert!(triangles.has_edge_on_triangle((1 << 8) | (1 << 9) | (1 << 14) | (1 << 19))); // no edges on first triangle, none on second, one on third, two on fourth
@@ -574,7 +583,7 @@ fn test_has_edge_on_triangle_triangles() {
 // has_two_edges_on_triangle function
 
 #[test]
-fn test_has_two_edges_on_triangle_morita_rank4() {
+fn has_two_edges_on_triangle_morita_rank4() {
     let morita: Graph = Graph::new(MORITA_RANK4_VERTICES, MORITA_RANK4_EDGES.into()).to_bipartite();
     assert!(!morita.has_two_edges_on_triangle((1 << 9) | (1 << 13) | (1 << 7))); // no edges on triangles
     assert!(!morita.has_two_edges_on_triangle((1 << 9) | (1 << 12) | (1 << 13))); // no edge on first trinagle, one on second
@@ -588,7 +597,7 @@ fn test_has_two_edges_on_triangle_morita_rank4() {
 }
 
 #[test]
-fn test_has_two_edges_on_triangle_triangles() {
+fn has_two_edges_on_triangle_triangles() {
     let triangles: Graph = Graph::new(TRIANGLES_VERTICES, TRIANGLES_EDGES.into()).to_bipartite();
     // assert!(triangles.has_two_edges_on_triangle((1 << 0) | (1 << 0)));
     assert!(!triangles.has_two_edges_on_triangle((1 << 10) | (1 << 14))); // no edges on triangles
@@ -617,7 +626,7 @@ fn test_has_two_edges_on_triangle_triangles() {
 // find-ktuples function
 
 #[test]
-fn test_find_ktuples() {
+fn find_ktuples() {
     let arr = &[1, 2, 3, 4, 5, 6];
     let res = &[
         [1, 2, 3],
@@ -646,7 +655,7 @@ fn test_find_ktuples() {
 }
 
 #[test]
-fn test_ordered_ktuples() {
+fn find_ordered_ktuples() {
     let arr = &[1, 2, 3];
     let res = &[[1, 2], [1, 3], [2, 1], [2, 3], [3, 1], [3, 2]];
     let perms = &[
@@ -660,3 +669,32 @@ fn test_ordered_ktuples() {
     assert_eq!(ordered_ktuples(arr, 2), res);
     assert_eq!(ordered_ktuples(arr, 3), perms);
 }
+
+#[test]
+fn diameter_petersen() {
+    let graph: Graph = Graph::new(PETERSEN_VERTICES, PETERSEN_EDGES.into());
+    assert_eq!(graph.diameter(), 2);
+}
+
+// #[test]
+// fn morita_rank_8() {
+//     let cycle = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (0, 6)];
+//     let edges: Vec<_> = cycle
+//         .into_iter()
+//         .chain(cycle.into_iter().map(|(x, y)| (x + 7, y + 7)))
+//         .collect();
+
+//     let mut set = FxHashSet::default();
+//     for perm in ordered_ktuples(&[0, 1, 2, 3, 4, 5, 6], 7) {
+//         dbg!(&perm);
+//         let mut e = edges.clone();
+//         e.extend((0..7).map(|i| (i, perm[i as usize] + 7)));
+//         let (g, _, _) = Graph::new(14, e).canonical_label();
+//         set.insert(g);
+//     }
+//     dbg!(set.len());
+//     for g in &set {
+//         println!("{}", g.to_bipartite().to_g6());
+//     }
+//     assert!(false);
+// }

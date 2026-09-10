@@ -482,49 +482,17 @@ impl Graph {
         }
     }
 
-    /// Returns whether a given vertex has valency 2
-    pub fn has_valency2(&self, vertex: u8) -> bool {
-        self.adj[vertex as usize].count_ones() == 2
-    }
-
-    /// Returns whether a given vertex has valency 3
-    pub fn has_valency3(&self, vertex: u8) -> bool {
-        self.adj[vertex as usize].count_ones() == 3
-    }
-
-    /// Returns whether a given vertex has valency at least `min` and at most `max`
-    pub fn has_valency(&self, vertex: u8, min: u8, max: u8) -> bool {
-        (self.adj[vertex as usize].count_ones() >= min as u32)
-            && (self.adj[vertex as usize].count_ones() <= max as u32)
-    }
-
-    /// Return all valency 2 vertices
-    pub fn vertices_valency2(&self) -> Vec<u8> {
-        let mut edges: Vec<u8> = Vec::new();
-        for i in 0..self.num_vertices {
-            if self.has_valency2(i) {
-                edges.push(i);
-            }
-        }
-        edges
-    }
-
-    /// Return all valency 3 vertices
-    pub fn vertices_valency3(&self) -> Vec<u8> {
-        let mut edges: Vec<u8> = Vec::new();
-        for i in 0..self.num_vertices {
-            if self.has_valency3(i) {
-                edges.push(i);
-            }
-        }
-        edges
+    /// Returns the valency of the vertex with the given index.
+    pub fn vertex_valency(&self, vertex: u8) -> u8 {
+        self.adj[vertex as usize].count_ones() as u8
     }
 
     /// Return all vertices with valency at leas `min` and at most `max`
-    pub fn vertices_valency(&self, min: u8, max: u8) -> Vec<u8> {
+    pub fn vertices_with_valency(&self, min: u8, max: u8) -> Vec<u8> {
         let mut edges: Vec<u8> = Vec::new();
         for i in 0..self.num_vertices {
-            if self.has_valency(i, min, max) {
+            let val = self.vertex_valency(i);
+            if min <= val && val <= max {
                 edges.push(i);
             }
         }
@@ -568,11 +536,11 @@ impl Graph {
         i
     }
 
-    /// Returns the two vertices defining the given edge, panics if input has valency other then 2
-    /// Only works on graphs in the bipartite form
-    pub fn edge_vertices(&self, edge: u8) -> (u8, u8) {
+    /// Returns the two vertices on the given edge, panics if input has valency other then 2.
+    /// Only works on graphs in the bipartite form.
+    pub fn vertices_on_edge(&self, edge: u8) -> (u8, u8) {
         assert!(
-            self.has_valency2(edge),
+            self.vertex_valency(edge) == 2,
             "Edge needs to have valency exactly 2!"
         );
 
@@ -580,12 +548,12 @@ impl Graph {
         (vertices[0] as u8, vertices[1] as u8)
     }
 
-    /// Returns all vertex neighbours of a given vertex as a bitmask
-    /// Expects the vertex to have valency at least 3, i.e. not an edge, othervise panics
-    /// Only works on graphs in the bipartite form
+    /// Returns all vertex neighbours of a given vertex as a bitmask.
+    /// Expects the vertex to have valency at least 3, i.e. not an edge, otherwise panics.
+    /// Only works on graphs in the bipartite form.
     pub fn neighbour_vertices_bitmask(&self, vertex: u8) -> u64 {
         assert!(
-            self.has_valency(vertex, 3, 255),
+            self.vertex_valency(vertex) >= 3,
             "Vertex needs to have valency at least 3!"
         );
 
@@ -611,9 +579,9 @@ impl Graph {
     pub fn triangles(&self) -> Vec<u64> {
         let mut f: FxHashSet<u64> = FxHashSet::default();
 
-        for e in self.vertices_valency2() {
-            let (v1, v2) = self.edge_vertices(e);
-            for v in self.vertices_valency(3, 255) {
+        for e in self.vertices_with_valency(2, 2) {
+            let (v1, v2) = self.vertices_on_edge(e);
+            for v in self.vertices_with_valency(3, 255) {
                 if v == v1 || v == v2 {
                     continue;
                 }
@@ -746,7 +714,7 @@ impl Graph {
                 *m -= 1;
             }
         }
-        let f = |a| Some(morphism[a as usize]).filter(|_| a != v);
+        let f = |a| (a != v).then_some(morphism[a as usize]);
         let edges = edges
             .iter()
             .filter_map(|&(a, b)| Some((f(a)?, f(b)?)))
@@ -792,7 +760,7 @@ impl Graph {
         }
         let new_edges: Vec<_> = new_edges
             .drain()
-            .filter_map(|(e, (i, c))| Some((e, i)).filter(|_| retain_multiedges || c == 1))
+            .filter_map(|(e, (i, c))| (retain_multiedges || c == 1).then_some((e, i)))
             .collect();
         let mut perm_edges = permute_indexed_edges(&new_edges, &perm);
         perm_edges.sort_unstable_by_key(|(e, _)| *e);
@@ -875,8 +843,8 @@ impl Graph {
         output
     }
 
-    /// Convert the graph to a multigraph, with new edges given by degree 2 vertices.
-    pub fn to_multigraph(&self) -> Self {
+    /// Get the list of edges of a graph in a bipartite form.
+    pub fn multigraph_edges(&self) -> Vec<(u8, u8)> {
         let mut new_edges = Vec::new();
         let mut perm: Vec<_> = (0..self.num_vertices).collect();
         let mut new_v = 0;
@@ -898,45 +866,73 @@ impl Graph {
                 }
             }
         }
-        Graph::new(new_v, permute_edges(&new_edges, &perm))
-    }
-
-    /// Output the graph in the graphviz dot format
-    pub fn to_dot(&self) -> String {
-        let mut s = "graph {\n".to_string();
-        for &(v, w) in &self.edges {
-            s.push_str(&format!("{v} -- {w}\n"));
-        }
-        s.push('}');
-        s
+        permute_edges(&new_edges, &perm)
     }
 
     /// Compute the number of connected components of a graph, along with an assignment
     /// of connected components to vertices.
     pub fn connected_components(&self) -> (u8, Vec<u8>) {
         let mut components = vec![0; self.num_vertices as usize];
-        let mut stack = Vec::new();
         let mut i: u8 = 0;
         while let Some(u) = components.iter().position(|&e| e == 0) {
+            let mut stack: u64 = 0;
+            let mut visited = 0;
             i += 1;
             components[u] = i;
-            stack.push(u);
-            while let Some(v) = stack.pop() {
-                for w in BitPositions(self.adj[v]) {
-                    if components[w] == 0 {
-                        components[w] = i;
-                        stack.push(w);
-                    }
+            stack |= 1 << u;
+            while let Some(v) = Some(stack.trailing_zeros() as usize).filter(|z| *z != 64) {
+                for w in BitPositions(self.adj[v] & !visited & !stack) {
+                    components[w] = i;
                 }
+                visited |= 1 << v;
+                stack |= self.adj[v];
+                stack &= !visited;
             }
         }
         (i, components)
     }
 
+    /// Return a list of distances from the given vertex.
+    /// It is `u8::MAX` if the vertices are not connected.
+    pub fn distances_from_vertex(&self, vertex: u8) -> Vec<u8> {
+        let mut distances = vec![u8::MAX; self.num_vertices as usize];
+        let mut queue = VecDeque::new();
+        let mut visited = 1 << vertex;
+        queue.push_back(vertex as usize);
+        distances[vertex as usize] = 0;
+        while let Some(v) = queue.pop_front() {
+            let dist = distances[v];
+            for w in BitPositions(self.adj[v] & !visited) {
+                distances[w] = dist + 1;
+                queue.push_back(w);
+                visited |= 1 << w;
+            }
+        }
+        distances
+    }
+
+    /// Return the diameter of the graph.
+    /// It is `u8::MAX` if the graph is not connected.
+    pub fn diameter(&self) -> u8 {
+        (0..self.num_vertices)
+            .map(|v| self.distances_from_vertex(v).into_iter().max().unwrap())
+            .max()
+            .unwrap()
+    }
+
+    /// Return the diameter of the graph.
+    /// It is `u8::MAX` if the graph is not connected.
+    pub fn radius(&self) -> u8 {
+        (0..self.num_vertices)
+            .map(|v| self.distances_from_vertex(v).into_iter().max().unwrap())
+            .min()
+            .unwrap()
+    }
+
     /// Returns whether a graph is 3-edge connected
     /// Expected to be called on simple 3 valent graph only and in the bipartite form!
     pub fn is_3edge_connected(&self) -> bool {
-        let edges = self.vertices_valency2();
+        let edges = self.vertices_with_valency(2, 2);
 
         for e1 in edges.iter() {
             for e2 in edges.iter() {
@@ -964,13 +960,13 @@ impl Graph {
             return false;
         }
 
-        let hairs = self.vertices_valency(1, 1);
+        let hairs = self.vertices_with_valency(1, 1);
         let mut g = self.clone();
         for &h in hairs.iter().rev() {
             g = g.remove_vertex(h);
         }
 
-        let edges = self.vertices_valency2();
+        let edges = self.vertices_with_valency(2, 2);
         let ktuples = get_ktuples(&edges, k - 1);
 
         'outer: for kt in ktuples {
@@ -997,7 +993,7 @@ impl Graph {
 
     /// Returns whether a graph is 3-vertex connected
     pub fn is_3vertex_connected(&self) -> bool {
-        let vertices = self.vertices_valency(3, 255);
+        let vertices = self.vertices_with_valency(3, 255);
 
         for e1 in vertices.iter() {
             for e2 in vertices.iter() {
@@ -1015,7 +1011,7 @@ impl Graph {
 
     /// Returns whether a graph is 2-vertex connected
     pub fn is_2vertex_connected(&self) -> bool {
-        let vertices = self.vertices_valency(3, 255);
+        let vertices = self.vertices_with_valency(3, 255);
 
         for v in vertices {
             let g = self.remove_vertex(v);

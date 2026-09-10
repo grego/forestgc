@@ -28,7 +28,7 @@ fn main() {
         })
         .collect::<Vec<_>>();
     lines.pop();
-    println!("Read {}", &filename);
+    println!("Read {}", filename);
 
     let t = Instant::now();
     lines.par_sort_unstable();
