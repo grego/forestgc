@@ -24,7 +24,7 @@ fn extended_euclid(a: i32, b: i32) -> (i32, i32, i32) {
     let (gcd, x1, y1) = extended_euclid(b, a % b);
     let x = y1;
     let y = x1 - (a / b) * y1;
-    return (gcd, x, y);
+    (gcd, x, y)
 }
 
 const USAGE: &str = "Usage: program <vectors 1> <prime 1> <vectors 2> <prime 2> <output>";
