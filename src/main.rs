@@ -82,7 +82,7 @@ fn read_graphfile(filename: &str, three_connected: bool, hairs: u8, compl: bool)
     let g6s = reader.lines().collect::<Result<Vec<_>, _>>().unwrap();
     g6s.par_iter()
         .map(|g6| Graph::from_g6(g6))
-        .filter(|g| !three_connected || !g.is_2vertex_connected() || g.is_3edge_connected())
+        .filter(|g| !three_connected || g.is_3edge_connected())
         .filter(|g| !compl || !g.is_3edge_connected())
         .filter(|g| hairs == 0 || g.number_of_loops() >= hairs)
         .collect()
@@ -230,7 +230,7 @@ fn compute_matrix(
         .collect();
 
     if let Some(ref extendfile) = args.extend {
-        let f = File::open(extendfile).expect(&format!("Can't open {extendfile}"));
+        let f = File::open(extendfile).unwrap_or_else(|_| panic!("Can't open {extendfile}"));
         let reader = BufReader::new(f);
         fgs.extend(reader.lines().map(|l| l.unwrap().parse().unwrap()));
     }
@@ -279,7 +279,7 @@ fn compute_matrix(
             let filename = format!("{matrix_dir}/{matrix_name}_f{forest_size}.rows");
             let mf = File::create(&filename).unwrap();
             let mut mf = BufWriter::new(mf);
-            for (fg, du) in fgs.iter().zip(dus.into_iter()) {
+            for (fg, du) in fgs.iter().zip(dus) {
                 if du.smaller_forests().is_empty() {
                     continue;
                 }
@@ -334,7 +334,7 @@ fn compute_matrix(
     drop(mf);
     let mut mf = File::options().write(true).open(&filename).unwrap();
     write!(mf, "{} {}", durows + csum, columns).unwrap();
-    println!("{} written", &filename);
+    println!("{} written", filename);
 
     let total_time = start.elapsed();
     println!("---");
@@ -470,7 +470,7 @@ fn compute_matrix_full(
     } else {
         write!(mf, "{} {}", csum, columns).unwrap();
     }
-    println!("{} written", &filename);
+    println!("{} written", filename);
 
     if registry {
         let cols = if !transpose { "cols" } else { "rows" };
