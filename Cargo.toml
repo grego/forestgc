@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Maroš Grego <grego@math.cas.cz>", "Tomáš Vítek <vitek@math.cas.cz", "Thomas Willwacher <thomas.willwacher@math.ethz.ch>"]
 description = "Tool for generating and working with the matrices of the forested graph complex"
 license = "AGPL-3.0"
+default-run = "graphc"
 
 [dependencies]
 argh = "0.1.13"
