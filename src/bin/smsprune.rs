@@ -350,14 +350,16 @@ fn divide_cols(m: &mut Vec<([Index; 2], i32)>, [_, y]: [usize; 2]) {
     println! {"divided {divided} cols, max by {max}"};
 }
 
-fn count_statistics(m: &[([Index; 2], i32)], [_, y]: [usize; 2]) {
+fn count_statistics(m: &[([Index; 2], i32)], [x, y]: [usize; 2]) {
     let mut counts = vec![0; y];
-    for &([_, j], _) in m {
+    let mut countsr = vec![0; x];
+    for &([i, j], _) in m {
         counts[j as usize - 1] += 1;
+        countsr[i as usize - 1] += 1;
     }
 
     const THRESHOLD: usize = 1000;
-    let mut c = 0;
+    let (mut c, mut r) = (0, 0);
     let min = counts.iter().min().copied().unwrap_or(0);
     let max = counts.iter().max().copied().unwrap_or(0);
     let mut large = 0;
@@ -369,10 +371,18 @@ fn count_statistics(m: &[([Index; 2], i32)], [_, y]: [usize; 2]) {
             large += 1;
         }
     }
-    drop(counts);
+    for &cr in &countsr {
+        if cr == 3 {
+            r += 1;
+        }
+    }
 
     println!("remaing {c} columns with {min} entries");
     println!("{large} columns with over {THRESHOLD} entries, max {max}");
+    println!("remaing {r} rows with 3 entries");
+
+    // counts.par_sort_unstable();
+    // println!("median column: {}", counts[counts.len() / 2]);
 }
 
 /// Delete duplicate rows of size.
@@ -497,6 +507,8 @@ fn delete_duplicate_rows(
 
     (x - shift as usize, eliminated)
 }
+
+/// Prune linearly dependent triples.
 fn prune_ld_triplets(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> usize {
     let mut row_indices = vec![Default::default(); x + 1];
     let mut col_indices = vec![Vec::default(); y + 1];
@@ -526,11 +538,8 @@ fn prune_ld_triplets(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> usiz
                 for &ii in col_indices[j as usize]
                     .iter()
                     .filter(|&&ii| ii > i as Index)
+                    .filter(|&&ii| checked_rows.insert(ii))
                 {
-                    if !checked_rows.insert(ii) {
-                        return false;
-                    }
-
                     let mut piv_i = Index::MAX;
                     for k in row_iter(i) {
                         if !row_iter(ii as usize)
@@ -599,19 +608,27 @@ fn prune_ld_triplets(m: &mut Vec<([Index; 2], i32)>, [x, y]: [usize; 2]) -> usiz
                                 &m[row_indices[r as usize]..row_indices[r as usize + 1]]
                             {
                                 let Ok(rk) = indices.binary_search(&j) else {
-                                    continue;
+                                    continue 'outer;
                                 };
                                 r_vec[rk] = s * g;
                             }
 
                             if r_vec[piv_i] % i_vec[piv_i] != 0 {
-                                continue;
+                                let m = i_vec[piv_i] / gcd(r_vec[piv_i], i_vec[piv_i]);
+                                for r in &mut r_vec {
+                                    *r *= m;
+                                }
                             }
-                            let mi = r_vec[piv_i] / i_vec[piv_i];
+                            let mut mi = r_vec[piv_i] / i_vec[piv_i];
 
-                            let rii = r_vec[piv_ii] - mi * i_vec[piv_ii];
+                            let mut rii = r_vec[piv_ii] - mi * i_vec[piv_ii];
                             if rii % ii_vec[piv_ii] != 0 {
-                                continue;
+                                let m = ii_vec[piv_ii] / gcd(rii, ii_vec[piv_ii]);
+                                for r in &mut r_vec {
+                                    *r *= m;
+                                }
+                                rii *= m;
+                                mi *= m;
                             }
                             let mii = rii / ii_vec[piv_ii];
 
@@ -708,9 +725,12 @@ fn main() {
     if let Some(ref vecname) = args.vec {
         let reg = prune_by_vec(vecname).unwrap();
         let colname = parent.join(matrix_stem.as_ref()).with_extension("cols");
+        let colreg = Registry::read(&colname)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", colname.to_string_lossy()));
+
         let new_stem = format!("vpruned_{matrix_stem}");
         let newcolname = parent.join(&new_stem).with_extension("cols");
-        prune_registry(&colname, &newcolname, &reg);
+        colreg.prune(&newcolname, &reg);
         println!("Pruned into {} entries", reg.len());
         return;
     }
@@ -718,13 +738,13 @@ fn main() {
     let file = match File::open(&args.filename) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("Error reading {}: {e}", &args.filename);
+            eprintln!("Error reading {}: {e}", args.filename);
             return;
         }
     };
     let mut reader = BufReader::with_capacity(500_000_000, file);
     let (mut dims, mut lines) = read_sms_file(&mut reader);
-    println!("Read {}", &args.filename);
+    println!("Read {}", args.filename);
     println!("Original dimensions: {} {}", dims[0], dims[1]);
 
     if let Some(ref afile) = args.join {
@@ -737,7 +757,7 @@ fn main() {
                 .map(|([i, j], s)| ([i + dims[0] as Index, j], s)),
         );
         dims[0] += adims[0];
-        println!("Read {}", &afile);
+        println!("Read {}", afile);
         println!("Original dimensions: {} {}", adims[0], adims[1]);
     }
 
@@ -901,10 +921,25 @@ fn main() {
             .map(|&([i, j], _)| (i as usize - 1, j as usize - 1 + dims[0]))
             .collect();
         let graph = BigGraph::new(dims[0] + dims[1], edges);
+        println!("Looking for connected components");
         graph.connected_components()
     } else {
         (1, Vec::with_capacity(0))
     };
+
+    let (mut rowreg, mut colreg) = (None, None);
+    if registry.is_some() {
+        let rowname = parent.join(matrix_stem.as_ref()).with_extension("rows");
+        rowreg = Some(
+            Registry::read(&rowname)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", rowname.to_string_lossy())),
+        );
+        let colname = parent.join(matrix_stem.as_ref()).with_extension("cols");
+        colreg = Some(
+            Registry::read(&colname)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", colname.to_string_lossy())),
+        );
+    }
 
     if nc > 1 {
         println!("{nc} block components");
@@ -926,7 +961,7 @@ fn main() {
             }
 
             let stem = format!("{new_stem}_b{c}");
-            let file = File::create(parent.join(stem).with_extension("sms")).unwrap();
+            let file = File::create(parent.join(&stem).with_extension("sms")).unwrap();
             let mut file = BufWriter::with_capacity(500_000_000, file);
             writeln!(&mut file, "{x} {y} M").unwrap();
             for &([i, j], s) in lines.iter() {
@@ -942,6 +977,21 @@ fn main() {
                 .unwrap();
             }
             writeln!(&mut file, "0 0 0").unwrap();
+
+            if let (Some(reg), Some(rowreg), Some(colreg)) = (&registry, &rowreg, &colreg) {
+                let nrreg: Vec<_> = (0..dims[0])
+                    .filter(|&k| comps[k] == c)
+                    .map(|k| reg[0][k])
+                    .collect();
+                let newrowname = parent.join(&stem).with_extension("rows");
+                rowreg.prune(&newrowname, &nrreg);
+                let ncreg: Vec<_> = (dims[0]..dims[0] + dims[1])
+                    .filter(|&k| comps[k] == c)
+                    .map(|k| reg[1][k - dims[0]])
+                    .collect();
+                let newcolname = parent.join(&stem).with_extension("cols");
+                colreg.prune(&newcolname, &ncreg);
+            };
         }
         return;
     }
@@ -950,73 +1000,89 @@ fn main() {
     let mut file = BufWriter::with_capacity(500_000_000, file);
     write_sms_file(dims, lines, &mut file);
 
-    let Some(reg) = registry else {
+    let (Some(reg), Some(rowreg), Some(colreg)) = (registry, rowreg, colreg) else {
         return;
     };
-    let file = File::create(parent.join(&new_stem).with_extension("rowr")).unwrap();
-    let mut file = BufWriter::with_capacity(500_000_000, file);
-    for &j in &reg[0] {
-        file.write_all(&j.to_le_bytes()).unwrap();
-    }
+    // let file = File::create(parent.join(&new_stem).with_extension("rowr")).unwrap();
+    // let mut file = BufWriter::with_capacity(500_000_000, file);
+    // for &j in &reg[0] {
+    //     file.write_all(&j.to_le_bytes()).unwrap();
+    // }
 
-    let file = File::create(parent.join(&new_stem).with_extension("colr")).unwrap();
-    let mut file = BufWriter::with_capacity(500_000_000, file);
-    for &j in &reg[1] {
-        file.write_all(&j.to_le_bytes()).unwrap();
-    }
+    // let file = File::create(parent.join(&new_stem).with_extension("colr")).unwrap();
+    // let mut file = BufWriter::with_capacity(500_000_000, file);
+    // for &j in &reg[1] {
+    //     file.write_all(&j.to_le_bytes()).unwrap();
+    // }
 
-    let rowname = parent.join(matrix_stem.as_ref()).with_extension("rows");
     let newrowname = parent.join(&new_stem).with_extension("rows");
-    prune_registry(&rowname, &newrowname, &reg[0]);
+    rowreg.prune(&newrowname, &reg[0]);
 
-    let colname = parent.join(matrix_stem.as_ref()).with_extension("cols");
     let newcolname = parent.join(&new_stem).with_extension("cols");
-    prune_registry(&colname, &newcolname, &reg[1]);
+    colreg.prune(&newcolname, &reg[1]);
 }
 
-fn read_registry<R: BufRead>(reader: R) -> std::io::Result<(Vec<String>, Vec<usize>, Vec<u64>)> {
-    let (mut graphs, mut indices, mut forests) = (Vec::new(), Vec::new(), Vec::new());
-    for line in reader.lines() {
-        let line = line?;
-        let mut numbers = line.split_whitespace();
-        let Some(graph) = numbers.next() else {
-            continue;
-        };
-        graphs.push(graph.to_string());
-        indices.push(forests.len());
-        for m in numbers.map(|s| u64::from_str_radix(s, 16).unwrap()) {
-            forests.push(m);
-        }
-    }
-    indices.push(forests.len());
-    Ok((graphs, indices, forests))
+struct Registry {
+    graphs: Vec<String>,
+    indices: Vec<usize>,
+    forests: Vec<u64>,
 }
 
-fn prune_registry(old: &Path, new: &Path, pruned: &[usize]) {
-    let Ok(file) = File::open(old) else {
-        return;
-    };
-    let file = BufReader::with_capacity(500_000_000, file);
-    let (graphs, indices, forests) = read_registry(file).unwrap();
-    let file = File::create(new).unwrap();
-    let mut file = BufWriter::with_capacity(500_000_000, file);
-    let mut next_graph_idx = 1;
-    let mut next_idx = indices[next_graph_idx];
-    dbg!((graphs.len(), indices.len(), forests.len()));
-    write!(file, "{}", graphs[0]).unwrap();
-    for &j in pruned {
-        if j >= next_idx {
-            loop {
-                next_graph_idx += 1;
-                next_idx = indices[next_graph_idx];
-                if next_idx > j {
-                    writeln!(file).unwrap();
-                    write!(file, "{}", graphs[next_graph_idx - 1]).unwrap();
-                    break;
-                };
+impl Registry {
+    fn read(name: &Path) -> std::io::Result<Registry> {
+        let file = File::open(name)?;
+        let reader = BufReader::new(file);
+        let (mut graphs, mut indices, mut forests) = (Vec::new(), Vec::new(), Vec::new());
+        for line in reader.lines() {
+            let line = line?;
+            let mut numbers = line.split_whitespace();
+            let Some(graph) = numbers.next() else {
+                continue;
+            };
+            graphs.push(graph.to_string());
+            indices.push(forests.len());
+            for m in numbers.map(|s| u64::from_str_radix(s, 16).unwrap()) {
+                forests.push(m);
             }
         }
-        write!(file, " {:X}", forests[j]).unwrap();
+        indices.push(forests.len());
+        Ok(Registry {
+            graphs,
+            indices,
+            forests,
+        })
+    }
+
+    fn prune(&self, newfile: &Path, pruned: &[usize]) {
+        let Registry {
+            graphs,
+            indices,
+            forests,
+        } = self;
+        if pruned.is_empty() {
+            return;
+        }
+
+        let file = File::create(newfile).unwrap();
+        let mut file = BufWriter::with_capacity(500_000_000, file);
+        let mut next_graph_idx = indices.iter().position(|&i| i > pruned[0]).unwrap_or(1);
+        let mut next_idx = indices[next_graph_idx];
+
+        write!(file, "{}", graphs[next_graph_idx - 1]).unwrap();
+        for &j in pruned {
+            if j >= next_idx {
+                loop {
+                    next_graph_idx += 1;
+                    next_idx = indices[next_graph_idx];
+                    if next_idx > j {
+                        writeln!(file).unwrap();
+                        write!(file, "{}", graphs[next_graph_idx - 1]).unwrap();
+                        break;
+                    };
+                }
+            }
+            write!(file, " {:X}", forests[j]).unwrap();
+        }
     }
 }
 
